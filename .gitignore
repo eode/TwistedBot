@@ -1,3 +1,12 @@
+## syntax: glob 
+# The syntax: glob command allows most use-cases of .gitignore to be directly
+# be copied to .hgignore for hg users.
+# !!!WARNING!!!
+# If you must use !negations or /leading_slashes, then delete this message and
+# the 'syntax: glob' and '.hgignore' directives.
+syntax: glob
+.hgignore
+
 *.pyc
 *.py~
 *.swp
