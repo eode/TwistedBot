@@ -26,7 +26,7 @@ class Chunk(object):
         self.blocks = [None for _ in xrange(self.levels)]
         self.meta = [None for _ in xrange(self.levels)]
         self.block_light = []  # ignore block light
-        self.sky_light = []  # ifnore sky light
+        self.sky_light = []  # ignore sky light
         self.biome = [None for _ in xrange(config.CHUNK_SIDE_LEN * config.CHUNK_SIDE_LEN)]
         self.complete = False
 
