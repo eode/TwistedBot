@@ -37,6 +37,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.mainWidget)
         self.grid = QGridLayout()
         self.mainWidget.setLayout(self.grid)
+        # Widgets for location
         name = QLabel("Position:")
         self.bot_x = QLabel('x:')
         self.bot_y = QLabel('y:')
@@ -44,6 +45,9 @@ class MainWindow(QMainWindow):
         row1 = [name, self.bot_x, self.bot_y, self.bot_z]
         for i in xrange(len(row1)):
             self.grid.addWidget(row1[i], 0, i)
+        # Widgets for health
+        self.health = QLabel('')
+        self.grid.addWidget(self.health, 1, 0)
 
         # Start the local event loop to update GUI
         self.timer = QTimer(self)
@@ -56,6 +60,7 @@ class MainWindow(QMainWindow):
         self.message_handlers = {
             'location': self._p_location,
             'bot name': self._p_bot_name,
+            'health update': self._p_health_update,
             }
 
     def local_event_loop(self, milliseconds=None):
@@ -80,6 +85,9 @@ class MainWindow(QMainWindow):
 
     def _p_bot_name(self, name):
         self.setWindowTitle("Minecraft bot: " + name[0])
+
+    def _p_health_update(self, data):
+        self.health.setText(str(data))
 
     def _p_location(self, c):
         self.bot_x.setText("x:" + str(c.position.x))

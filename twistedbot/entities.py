@@ -66,6 +66,7 @@ class EntityPlayer(EntityLiving):
         super(EntityPlayer, self).__init__(**kwargs)
         self.username = kwargs["username"]
         self.held_item = kwargs["held_item"]
+        #TODO Assign head positioning info
 
 
 class EntityVehicle(Entity):
@@ -123,7 +124,7 @@ class Entities(object):
             return
         self.world.commander.last_block = block
         #TODO put some nice debug code here
-        self.world.commander.last_possition = gpos
+        self.world.commander.last_position = gpos
 
     def entityupdate(fn):
         def f(self, *args, **kwargs):

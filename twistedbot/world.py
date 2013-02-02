@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import datetime
+from Queue import Empty, Full
 
 import logbot
 import utils
@@ -26,8 +27,26 @@ class Dimension(object):
         self.sign_waypoints = SignWayPoints(self)
 
 
+class DummyQueue(object):
+    empty = lambda s: True
+    full = lambda s: True
+    put = lambda s, v: None
+    put_nowait = put
+    get = lambda s: None
+
+    def get_nowait(self):
+        raise Empty()
+
+
+
+
 class World(object):
-    def __init__(self, host=None, port=None, commander_name=None, bot_name=None):
+    def __init__(self, host=None, port=None,
+                 commander_name=None, bot_name=None,
+                 to_bot_q=None, to_gui_q=None):
+        self.to_bot = DummyQueue() if to_bot_q is None else to_bot_q
+        self.to_gui = DummyQueue() if to_gui_q is None else to_gui_q
+        self.to_gui.put(("bot name", bot_name))
         self.server_host = host
         self.server_port = port
         self.commander = Commander(commander_name)
@@ -87,6 +106,7 @@ class World(object):
     def on_shutdown(self):
         log.msg("Shutdown")
         self.factory.log_connection_lost = False
+        self.to_gui.put(['shutdown received'])
 
     def send_packet(self, name, payload):
         if self.protocol is not None:
@@ -121,8 +141,8 @@ class World(object):
         self.bot.spawn_point_received = False
         self.bot.i_am_dead = False
 
-    def on_time_update(self, timestamp=None, daytime=None):
-        self.timestamp = timestamp
+    def on_time_update(self, age_of_world=None, daytime=None):
+        self.age_of_world = age_of_world
         self.daytime = daytime
 
 
@@ -130,7 +150,7 @@ class Commander(object):
     def __init__(self, name):
         self.name = name
         self.eid = None
-        self.last_possition = None
+        self.last_position = None
         self.last_block = None
 
     @property

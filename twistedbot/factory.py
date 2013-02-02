@@ -1,7 +1,6 @@
 
 from collections import deque
 
-
 from twisted.internet.protocol import ReconnectingClientFactory, Protocol
 from twisted.internet import reactor
 
@@ -12,7 +11,6 @@ import utils
 from packets import parse_packets, make_packet, packets_by_name, Container
 from proxy_processors.default import process_packets as packet_printout
 
-
 proxy_processors.default.ignore_packets = []
 proxy_processors.default.filter_packets = []
 
@@ -21,6 +19,8 @@ log = logbot.getlogger("PROTOCOL")
 
 class MineCraftProtocol(Protocol):
     def __init__(self, world):
+        self.to_bot = world.to_bot
+        self.to_gui = world.to_gui
         self.world = world
         self.world.protocol = self
         self.leftover = ""
@@ -146,8 +146,10 @@ class MineCraftProtocol(Protocol):
         self.send_packet("keep alive", {"pid": pid})
 
     def p_login(self, c):
-        log.msg("LOGIN DATA eid %s level type: %s, game_mode: %s, dimension: %s, difficulty: %s, max players: %s" %
-                (c.eid, c.level_type, c.game_mode, c.dimension, c.difficulty, c.players))
+        msg = ("LOGIN DATA eid %s level type: %s, game_mode: %s, "
+               "dimension: %s, difficulty: %s, max players: %s")
+        log.msg( msg % (c.eid, c.level_type, c.game_mode, c.dimension,
+                        c.difficulty, c.players))
         self.world.on_login(bot_eid=c.eid, game_mode=c.game_mode, dimension=c.dimension, difficulty=c.difficulty)
         utils.do_now(self.send_packet, "locale view distance", {'locale': 'en_GB',
                                                                 'view_distance': 2,
@@ -159,7 +161,8 @@ class MineCraftProtocol(Protocol):
         self.world.chat.on_chat_message(c.message)
 
     def p_time(self, c):
-        self.world.on_time_update(timestamp=c.timestamp, daytime=c.daytime)
+        # c is dict-like and has members c.age_of_world and c.daytime
+        self.world.on_time_update(**c)
 
     def p_entity_equipment(self, c):
         pass
@@ -169,6 +172,7 @@ class MineCraftProtocol(Protocol):
         self.world.on_spawn_position(c.x, c.y, c.z)
 
     def p_health(self, c):
+        self.to_gui.put(('health update', c))
         self.world.bot.on_health_update(c.hp, c.fp, c.saturation)
 
     def p_respawn(self, c):
@@ -179,6 +183,7 @@ class MineCraftProtocol(Protocol):
         log.msg("received LOCATION X:%f Y:%f Z:%f STANCE:%f GROUNDED:%s" %
                 (c.position.x, c.position.y, c.position.z,
                  c.position.stance, c.grounded.grounded))
+        self.to_gui.put(('location', c))
         c.position.y, c.position.stance = c.position.stance, c.position.y
         self.send_packet("player position&look", c)
         self.world.bot.on_new_location({"x": c.position.x,

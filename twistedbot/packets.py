@@ -30,7 +30,7 @@ import logbot
 
 log = logbot.getlogger("BOT_ENTITY")
 
-
+# ..shouldn't we just be able to use utf-16?
 def ucs2(name):
     if name.lower() not in ("ucs2", "ucs-2"):
         return None
@@ -62,13 +62,12 @@ def ucs2(name):
         incrementaldecoder=UCS2IncrementalDecoder,
         streamwriter=UCS2StreamWriter,
         streamreader=UCS2StreamReader,
-    )
+        )
 
 register(ucs2)
 
 
 class DoubleAdapter(LengthValueAdapter):
-
     def _encode(self, obj, context):
         return len(obj) / 2, obj
 
@@ -80,13 +79,12 @@ def AlphaString(name):
                      UBInt16("length"),
                      MetaField("data", lambda ctx: ctx["length"] * 2),
                      )
-        ),
+            ),
         encoding="ucs2",
-    )
+        )
+
 
 # Boolean converter.
-
-
 def Bool(*args, **kwargs):
     return Flag(*args, default=True, **kwargs)
 
@@ -196,17 +194,17 @@ entity_metadata = MetadataAdapter(
 
 # The actual packet list.
 packets = {
-    0: Struct("keep alive",
-              SBInt32("pid"),
-              ),
-    1: Struct("login request ",
+    0x00: Struct("keep alive",
+                 SBInt32("pid"),
+                 ),
+    0x01: Struct("login request ",
               SBInt32("eid"),
               AlphaString("level_type"),
               SBInt8("game_mode"),
               SBInt8("dimension"),
               SBInt8("difficulty"),
               UBInt8("unused"),
-              UBInt8("players"),
+              SBInt8("players"),
               ),
     2: Struct("handshake",
               UBInt8("protocol"),
@@ -218,7 +216,7 @@ packets = {
               AlphaString("message"),
               ),
     4: Struct("time update",
-              SBInt64("timestamp"),
+              SBInt64("age_of_world"),
               SBInt64("daytime"),
               ),
     5: Struct("entity equipment",

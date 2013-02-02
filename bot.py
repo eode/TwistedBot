@@ -29,8 +29,9 @@ class ConsoleChat(basic.LineReceiver):
             logbot.exit_on_error(e)
 
 
-def start():
-    parser = argparse.ArgumentParser(description='Bot arguments.')
+def start(argv, to_bot=None, to_gui=None):
+    parser = argparse.ArgumentParser(description='Bot arguments.',
+                                     prog=argv[0])
     parser.add_argument('--serverhost', default=config.SERVER_HOST,
                         dest='serverhost', help='Minecraft server host')
     parser.add_argument('--serverport', type=int, default=config.SERVER_PORT,
@@ -44,14 +45,15 @@ def start():
     parser.add_argument('--log2file',
                         action='store_true',
                         help='Save log data to file')
-    args = parser.parse_args()
+    args = parser.parse_args(args=argv[1:])
     if args.log2file:
         logbot.start_bot_filelog()
     config.USERNAME = args.botname
     config.COMMANDER = args.commandername
     host = args.serverhost
     port = args.serverport
-    world = World(host=host, port=port, commander_name=args.commandername, bot_name=args.botname)
+    world = World(host=host, port=port, to_bot_q=to_bot, to_gui_q=to_gui,
+                  commander_name=args.commandername, bot_name=args.botname)
     try:
         from twisted.internet import stdio
         stdio.StandardIO(ConsoleChat(world))
@@ -63,7 +65,9 @@ def start():
         log.msg("CTRL-C from user, exiting....")
         mc_factory.log_connection_lost = False
         reactor.callFromThread(reactor.stop)
-
+        world.to_gui.put(['shutdown complete'])
+        world.to_gui.close()
+        world.to_bot.close()
     signal.signal(signal.SIGINT, customKeyboardInterruptHandler)
     reactor.addSystemEventTrigger("before", "shutdown", world.on_shutdown)
     reactor.connectTCP(host, port, mc_factory)
@@ -71,4 +75,5 @@ def start():
 
 
 if __name__ == '__main__':
-    start()
+    import sys
+    start(sys.argv)
