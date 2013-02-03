@@ -172,7 +172,7 @@ class MineCraftProtocol(Protocol):
         self.world.on_spawn_position(c.x, c.y, c.z)
 
     def p_health(self, c):
-        self.to_gui.put(('health update', c))
+        self.to_gui.put(Message('health update', c))
         self.world.bot.on_health_update(c.hp, c.fp, c.saturation)
 
     def p_respawn(self, c):
@@ -183,7 +183,7 @@ class MineCraftProtocol(Protocol):
         log.msg("received LOCATION X:%f Y:%f Z:%f STANCE:%f GROUNDED:%s" %
                 (c.position.x, c.position.y, c.position.z,
                  c.position.stance, c.grounded.grounded))
-        self.to_gui.put(('location', c))
+        self.to_gui.put(Message('location', c))
         c.position.y, c.position.stance = c.position.stance, c.position.y
         self.send_packet("player position&look", c)
         self.world.bot.on_new_location({"x": c.position.x,

@@ -28,11 +28,12 @@ class Dimension(object):
 
 
 class DummyQueue(object):
+    close = lambda s: None
+    get = close
     empty = lambda s: True
-    full = lambda s: True
+    full = empty
     put = lambda s, v: None
     put_nowait = put
-    get = lambda s: None
 
     def get_nowait(self):
         raise Empty()
@@ -106,7 +107,6 @@ class World(object):
     def on_shutdown(self):
         log.msg("Shutdown")
         self.factory.log_connection_lost = False
-        self.to_gui.put(['shutdown received'])
 
     def send_packet(self, name, payload):
         if self.protocol is not None:

@@ -7,10 +7,16 @@ from twisted.internet import defer, reactor
 import logbot
 
 
-cross = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1) if ((i == 0) or (j == 0)) and (j != i)]
-corners = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1) if (i != 0) and (j != 0)]
+cross = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)
+            if ((i == 0) or (j == 0)) and (j != i)]
+corners = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)
+            if (i != 0) and (j != 0)]
 adjacency = cross + corners
 plane = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)]
+
+
+# Used in communication between bot and UI
+Message = namedtuple('Event', 'name data')
 
 
 def do_now(fn, *args, **kwargs):
