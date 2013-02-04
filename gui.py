@@ -162,9 +162,10 @@ class MainWindow(QMainWindow):
                 # otherwise, handle the packet.
                 self.message_handlers[message.name](message.data)
             except Exception:
+                raise
                 msg = "Error in message handler %s while handling this data:\n"
-                msg = (msg % key) + str(value)
-                log.error(msg, exc_info=True)
+                msg = (msg % message.name) + str(message.data)
+                log.msg(msg, exc_info=True)
         for name in latest_only:
             data = latest_only[name]
             try:
@@ -179,7 +180,7 @@ class MainWindow(QMainWindow):
     def _mh_bot_name(self, name):
         """Updates the window title with the bot's name."""
         # this sets the window title to include the bot's name.
-        self.setWindowTitle("Minecraft bot: " + data[0])
+        self.setWindowTitle("Minecraft bot: " + name)
 
     def _mh_health_update(self, data):
         """Updates the health info in the GUI"""
