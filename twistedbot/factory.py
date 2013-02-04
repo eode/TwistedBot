@@ -19,8 +19,6 @@ log = logbot.getlogger("PROTOCOL")
 
 class MineCraftProtocol(Protocol):
     def __init__(self, world):
-        self.to_bot = world.to_bot
-        self.to_gui = world.to_gui
         self.world = world
         self.world.protocol = self
         self.leftover = ""
@@ -172,18 +170,19 @@ class MineCraftProtocol(Protocol):
         self.world.on_spawn_position(c.x, c.y, c.z)
 
     def p_health(self, c):
-        self.to_gui.put(Message('health update', c))
+        self.world.to_gui('health', c)
         self.world.bot.on_health_update(c.hp, c.fp, c.saturation)
 
     def p_respawn(self, c):
         log.msg("RESPAWN received")
-        self.world.on_respawn(game_mode=c.game_mode, dimension=c.dimension, difficulty=c.difficulty)
+        self.world.on_respawn(game_mode=c.game_mode, dimension=c.dimension,
+                              difficulty=c.difficulty)
 
     def p_location(self, c):
         log.msg("received LOCATION X:%f Y:%f Z:%f STANCE:%f GROUNDED:%s" %
                 (c.position.x, c.position.y, c.position.z,
                  c.position.stance, c.grounded.grounded))
-        self.to_gui.put(Message('location', c))
+        self.world.to_gui('location', c)
         c.position.y, c.position.stance = c.position.stance, c.position.y
         self.send_packet("player position&look", c)
         self.world.bot.on_new_location({"x": c.position.x,

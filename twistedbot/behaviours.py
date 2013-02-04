@@ -1,4 +1,5 @@
 
+from collections import deque
 
 from twisted.internet.task import cooperate
 from twisted.internet.defer import inlineCallbacks, returnValue
@@ -30,7 +31,7 @@ class BehaviourTree(object):
     def __init__(self, world, bot):
         self.world = world
         self.bot = bot
-        self.bqueue = []
+        self.bqueue = deque()
         self.running = False
         self.user_command = None
 
@@ -40,6 +41,7 @@ class BehaviourTree(object):
 
     @property
     def recheck_goal(self):
+        """Why does this exist?"""
         return False
 
     def select_goal(self):
@@ -92,11 +94,12 @@ class BehaviourTree(object):
         log.msg('Cancelling %s' % self.bqueue[0])
         for b in self.bqueue:
             b.cancel()
-        self.bqueue = []
+        self.bqueue = deque()
         self.user_command = None
 
     def check_new_command(self):
-        if self.user_command is not None and self.current_behaviour.priority <= Priorities.user_command:
+        if self.user_command is not None \
+          and self.current_behaviour.priority <= Priorities.user_command:
             behaviour, args, kwargs = self.user_command
             self.cancel_running()
             bh = behaviour(manager=self, parent=None, *args, **kwargs)
@@ -179,10 +182,13 @@ class WalkSignsBehaviour(BehaviourBase):
 
     def _tick(self):
         if not self.world.sign_waypoints.has_group(self.group):
-            self.world.chat.send_chat_message("No group named '%s'" % self.group)
+            msg = "No group named '%s'" % self.group
+            self.world.chat.send_chat_message(msg)
             self.status = Status.failure
             return
-        new_signpoint, self.signpoint_forward_direction = self.next_sign(self.group, self.signpoint, self.signpoint_forward_direction)
+        sign_data = self.next_sign(self.group, self.signpoint,
+                                   self.signpoint_forward_direction)
+        new_signpoint, self.signpoint_forward_direction = sign_data
         if new_signpoint == self.signpoint:
             self.status = Status.success
             return

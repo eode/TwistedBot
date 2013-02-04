@@ -108,5 +108,7 @@ class Chat(object):
                     self.send_chat_message(str(sign))
             else:
                 self.send_chat_message("show what?")
+        elif verb == "hello":
+            self.send_chat_message('world')
         else:
             self.send_chat_message("Unknown command: %s" % original)

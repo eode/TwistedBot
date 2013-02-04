@@ -11,6 +11,7 @@ log = logbot.getlogger("ASTAR")
 
 
 class PathNode(object):
+    __slots__ = ['coords', 'cost', 'g', 'h', 'f', 'step', '_parent', 'hash']
     def __init__(self, coords=None, cost=1):
         self.coords = coords
         self.cost = cost
@@ -53,6 +54,8 @@ class PathNode(object):
 
 
 class Path(object):
+    __slots__ = ['dimension', 'nodes', 'start_aabb',
+                 'node_step', 'is_finished']
     def __init__(self, dimension=None, nodes=None, start_aabb=None):
         self.dimension = dimension
         self.nodes = nodes
@@ -85,7 +88,6 @@ class Path(object):
 
 
 class AStar(object):
-
     def __init__(self, dimension=None, start_coords=None, end_coords=None, max_cost=config.PATHFIND_LIMIT):
         self.dimension = dimension
         self.grid = dimension.grid

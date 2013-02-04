@@ -75,9 +75,9 @@ class MainWindow(QMainWindow):
         # rearrange what user data we see first.
         row = 0
         self.grid.addWidget(name, row, 0) # same as (name, 0, 0)
-        self.grid.addWidget(self.bot_x, row, 1) # same as (name, 0, 1)
-        self.grid.addWidget(self.bot_y, row, 2) # same as (name, 0, 2)
-        self.grid.addWidget(self.bot_z, row, 3) # same as (name, 0, 3)
+        self.grid.addWidget(self.bot_x, row, 1)  # same as (name, 0, 1)
+        self.grid.addWidget(self.bot_y, row, 2)  # same as (name, 0, 2)
+        self.grid.addWidget(self.bot_z, row, 3)  # same as (name, 0, 3)
 
         # Widgets for health
         self.health = QLabel('Health: ')
@@ -93,7 +93,6 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.local_event_loop)
         self.timer.start(500)   # milliseconds
 
-
     def _init_protocol(self):
         """Set up everything having to do with protocol between bot and GUI"""
         self.messages = deque()
@@ -106,11 +105,11 @@ class MainWindow(QMainWindow):
         # "_mh_", and try to keep them similar to the Message name.
         self.message_handlers = {
             # Messages named "health update" are sent to _mh_health_update.
-            'health update': self._mh_health_update,
+            'health': self._mh_health_update,
             # Messages with the name "location" are sent to _mh_location.
             'location': self._mh_location,
             # ..same idea here.
-            'bot name': self._mh_bot_name,
+            'name': self._mh_bot_name,
             # ..you can copy and edit this and _mh_template (below)
             'template': self._mh_template,
             }
