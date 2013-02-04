@@ -170,9 +170,10 @@ class MainWindow(QMainWindow):
             try:
                 self.message_handlers[name](data)
             except Exception:
-                msg = "Error in message handler %s while handling this data:\n"
-                msg = (msg % key) + str(value)
-                log.error(msg, exc_info=True)
+                raise
+#                msg = "Error in message handler %s while handling this data:\n"
+#                msg = (msg % name) + str(data)
+#                log.msg(msg, exc_info=True)
 
 
     def _mh_bot_name(self, name):

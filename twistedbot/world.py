@@ -45,7 +45,7 @@ class World(object):
                  to_bot_q=None, to_gui_q=None):
         self._to_bot = DummyQueue() if to_bot_q is None else to_bot_q
         self._to_gui = DummyQueue() if to_gui_q is None else to_gui_q
-        self.to_gui("bot name", bot_name)
+        self.to_gui("name", bot_name)
         self.server_host = host
         self.server_port = port
         self.commander = Commander(commander_name)

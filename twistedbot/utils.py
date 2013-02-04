@@ -16,7 +16,7 @@ plane = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)]
 
 
 # Used in communication between bot and UI
-Message = namedtuple('Event', 'name data')
+Message = namedtuple('Message', 'name data')
 
 
 def do_now(fn, *args, **kwargs):
