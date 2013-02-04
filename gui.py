@@ -30,6 +30,7 @@ from twistedbot.utils import Message
 
 log = logbot.getlogger("GUI")
 
+#example edit
 
 class MainWindow(QMainWindow):
     def __init__(self, argv):
