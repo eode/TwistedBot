@@ -117,8 +117,8 @@ class MainWindow(QMainWindow):
 
         # Make sure you add your message name here if your method only needs
         # the latest data.  This saves a lot of useless processing.
-        self.latest_only = set('health update', 'location', 'bot name',
-                               'template')
+        self.latest_only = set(['health update', 'location', 'bot name',
+                               'template'])
 
     def closeEvent(self, event):
         self.to_bot.put(Message('shut down', 'User closed GUI window'))
