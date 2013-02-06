@@ -69,6 +69,7 @@ class World(object):
         self.last_tick_time = datetime.now()
         self.period_time_estimation = config.TIME_STEP
         utils.do_later(config.TIME_STEP, self.tick)
+        self.shutdown_reason = ''
 
     def predict_next_ticktime(self, tick_start):
         tick_end = datetime.now()
@@ -107,7 +108,12 @@ class World(object):
         self.connected = True
 
     def on_shutdown(self):
-        log.msg("Shutdown")
+        reason = self.shutdown_reason
+        reason = reason if reason else "(no reason given)"
+        log.msg("Shutting Down: " + reason)
+        self.to_gui('shutting down', reason)
+        self._to_gui.close()
+        self._to_bot.close()
         self.factory.log_connection_lost = False
 
     def send_packet(self, name, payload):

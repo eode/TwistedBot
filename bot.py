@@ -2,6 +2,7 @@
 
 import signal
 import argparse
+import socket
 
 import syspath_fix
 syspath_fix.update_sys_path()
@@ -30,6 +31,10 @@ class ConsoleChat(basic.LineReceiver):
 
 
 def parse_args(argv):
+    # defaults me as commander when on my system. :-)
+    host = socket.gethostname()
+    commander = 'eode' if host == 'foxglove' else config.COMMANDER
+
     parser = argparse.ArgumentParser(description='Bot arguments.',
                                      prog=argv[0])
     parser.add_argument('--serverhost', default=config.SERVER_HOST,
@@ -39,7 +44,7 @@ def parse_args(argv):
     parser.add_argument('--botname', default=config.USERNAME,
                         dest='botname',
                         help='username that will be used by the bot')
-    parser.add_argument('--commandername', default=config.COMMANDER,
+    parser.add_argument('--commandername', default=commander,
                         dest='commandername',
                         help='your username that you use in Minecraft')
     parser.add_argument('--log2file',
@@ -70,19 +75,9 @@ def start(argv, to_bot=None, to_gui=None):
     args = parse_args(argv)
     world, mc_factory = initialize_bot(args, to_bot, to_gui)
 
-    def shut_down(reason=''):
-        """Shutdown, logging a reason as to why shutdown was called"""
-        msg = reason if reason else '(no reason given)'
-        log.msg("Shutting Down: " + reason)
-        mc_factory.log_connection_lost = False
-        reactor.callFromThread(reactor.stop)
-        world.to_gui.put(Message('shutdown complete', reason))
-        world.to_gui.close()
-        world.to_bot.close()
-
     def customKeyboardInterruptHandler(signum, stackframe):
         """Handle ctrl-c"""
-        shut_down("CTRL-C from user")
+        reactor.callFromThread(mc_factory.shut_down, "CTRL-C from user")
     signal.signal(signal.SIGINT, customKeyboardInterruptHandler)
 
     def gui_integration_loop():
@@ -90,7 +85,9 @@ def start(argv, to_bot=None, to_gui=None):
         if not to_bot.empty():
             message = to_bot.get()
             if message.name == "shut down":
-                shut_down("'shut down' received from GUI")
+                world.to_gui("shutdown ok", '')
+                message = "'shut down' received from GUI"
+                reactor.callFromThread(mc_factory.shut_down, message)
     if to_bot and to_gui:
         gui_loop = task.LoopingCall(gui_integration_loop)
         gui_loop.start(0.25)

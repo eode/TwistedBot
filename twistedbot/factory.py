@@ -4,6 +4,7 @@ from collections import deque
 from twisted.internet.protocol import ReconnectingClientFactory, Protocol
 from twisted.internet import reactor
 
+import plugins
 import config
 import logbot
 import proxy_processors.default
@@ -429,3 +430,12 @@ class MineCraftFactory(ReconnectingClientFactory):
     def clientConnectionFailed(self, connector, reason):
         log.msg('Connection failed, reason:', reason.getErrorMessage())
         ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
+
+    def shut_down(self, reason=''):
+        """Shutdown, logging a reason as to why shutdown was called.  This is
+        what should be called from within the thread for a clean shutdown."""
+        reason = reason if reason else '(no reason given)'
+        log.msg("Shutting Down")
+        self.world.shutdown_reason = reason
+        self.log_connection_lost = False
+        reactor.stop()

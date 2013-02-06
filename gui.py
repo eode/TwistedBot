@@ -17,12 +17,13 @@ There are comments in each area to help you.
 """
 
 import sys
+import signal
 import multiprocessing
-from collections import deque, namedtuple
 from time import sleep
+from collections import deque
+
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
-#from Queue import Empty
 
 import bot
 from twistedbot import logbot
@@ -74,10 +75,10 @@ class MainWindow(QMainWindow):
         # We'll put these on row 0.  Using a variable means we can easily
         # rearrange what user data we see first.
         row = 0
-        self.grid.addWidget(name, row, 0) # same as (name, 0, 0)
-        self.grid.addWidget(self.bot_x, row, 1)  # same as (name, 0, 1)
-        self.grid.addWidget(self.bot_y, row, 2)  # same as (name, 0, 2)
-        self.grid.addWidget(self.bot_z, row, 3)  # same as (name, 0, 3)
+        self.grid.addWidget(name, row, 0)        # same as (name, 0, 0)
+        self.grid.addWidget(self.bot_x, row, 1)  # same as (self.bot_x, 0, 1)
+        self.grid.addWidget(self.bot_y, row, 2)  # same as (self.bot_y, 0, 2)
+        self.grid.addWidget(self.bot_z, row, 3)  # same as (self.bot_z, 0, 3)
 
         # Widgets for health
         self.health = QLabel('Health: ')
@@ -110,6 +111,8 @@ class MainWindow(QMainWindow):
             'location': self._mh_location,
             # ..same idea here.
             'name': self._mh_bot_name,
+            # The bot is shutting down.
+            'shutting down': self._mh_shut_down,
             # ..you can copy and edit this and _mh_template (below)
             'template': self._mh_template,
             }
@@ -126,7 +129,7 @@ class MainWindow(QMainWindow):
             message = self.to_gui.get()
             if not isinstance(message, Message):
                 log.msg("Bad Message during shutdown: %s" % str(message))
-            if message.name == "shutdown complete":
+            if message.name == "shutdown ok":
                 break
             sleep(0.05)
         event.accept()
@@ -200,6 +203,13 @@ class MainWindow(QMainWindow):
         self.bot_y.setText("y:" + str(data.position.y))
         self.bot_z.setText("z:" + str(data.position.z))
 
+    def _mh_shut_down(self, data):
+        """Shutdown sent by bot.py.  We may want to turn this into something
+        that restarts the bot, or that announces to the GUI that the bot has
+        shut down."""
+        log.msg("Shutting down GUI: " + data)
+        self.app.quit()
+
     def _mh_template(self, data):
         """You should describe what your method does here.
         This can be more than one line."""
@@ -216,12 +226,18 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == "__main__":
-    defaults = sys.argv + ['--commandername', 'eode',
-                           '--botname', 'Bottington']
-    argv = defaults if len(sys.argv) is 1 else sys.argv
-    app = QApplication(argv)
-    main = MainWindow(argv)
+    counter = list('123')
+
+    def customKeyboardInterruptHandler(signum, stackframe):
+        """Ignore ctrl-c from user"""
+        if not counter:
+            log.msg("Third time's a charm..")
+            exit(130)
+        log.msg("ctrl-c: waiting for bot to exit cleanly")
+    signal.signal(signal.SIGINT, customKeyboardInterruptHandler)
+
+    app = QApplication(sys.argv)
+    main = MainWindow(sys.argv)
+    main.app = app
     main.show()
     app.exec_()
-
-
