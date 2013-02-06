@@ -252,6 +252,10 @@ class FollowPlayerBehaviour(BehaviourBase):
 
 
 class TravelToBehaviour(BehaviourBase):
+    """"Travel to a coordinate.
+    travel_coords := Coordinates to travel to
+    shorten_path_by := Avoid running directly into something or someone :-)
+    """
     def __init__(self, *args, **kwargs):
         super(TravelToBehaviour, self).__init__(*args, **kwargs)
         self.travel_coords = kwargs["coords"]
@@ -292,7 +296,7 @@ class TravelToBehaviour(BehaviourBase):
 
     @inlineCallbacks
     def _tick(self):
-        if not self.ready:
+        while not self.ready:
             yield self._prepare()
         self.follow(self.path, self.bot.bot_object)
 
