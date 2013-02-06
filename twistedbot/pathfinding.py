@@ -11,19 +11,14 @@ log = logbot.getlogger("ASTAR")
 
 
 class PathNode(object):
-    __slots__ = ['coords', 'cost', 'g', 'h', 'f', 'step', '_parent', 'hash']
-    def __init__(self, coords=None, cost=1):
+    __slots__ = ['coords', 'g', 'h', 'parent']
+    def __init__(self, coords, parent=None):
         self.coords = coords
-        self.cost = cost
         self.g = 0
         self.h = 0
-        self.f = 0
-        self.step = 0
-        self._parent = None
-        self.hash = hash(self.coords)
+        self.parent = parent
 
     def __str__(self):
-        #return "%s:st%s:cost:%s:g%s:h%s:f%s" % (str(self.coords), self.step, self.cost, self.g, self.h, self.f)
         return str(self.coords)
 
     def __repr__(self):
@@ -39,18 +34,37 @@ class PathNode(object):
         return self.hash
 
     @property
-    def parent(self):
-        return self._parent
+    def f(self):
+        return self.g + self.h
 
-    @parent.setter
-    def parent(self, p):
-        self._parent = p
-        self.step = p.step + 1
+    @property
+    def hash(self):
+        return hash(self.coords)
 
     def set_score(self, g, h):
         self.g = g
         self.h = h
-        self.f = g + h
+
+    @property
+    def step(self):
+        step = 0
+        parent = self
+        while parent is not None:
+            parent = parent.parent
+            step += 1
+
+    def _backpath(self):
+        parent = self
+        while parent is not None:
+            yield parent
+            parent = parent.parent
+        raise StopIteration()
+
+    @property
+    def path(self):
+        path = list(self._backpath())
+        path.reverse()
+        return path
 
 
 class Path(object):
@@ -108,16 +122,8 @@ class AStar(object):
         self.iter_count = 0
         self.t_start = time.time()
 
-    def reconstruct_path(self, current):
-        nodes = []
-        nodes.append(current)
-        while current.parent is not None:
-            nodes.append(current.parent)
-            current = current.parent
-        nodes.reverse()
-        return nodes
-
-    def get_edge_cost(self, node_from, node_to):
+    def get_edge_cost(self, node_from, node_to,
+                      x_neighbors=None, y_neighbors=None):
         return config.COST_DIRECT
 
     def neighbours(self, node):
@@ -141,18 +147,20 @@ class AStar(object):
             raise StopIteration()
         x = heapq.heappop(self.open_heap)
         if x == self.goal_node:
-            self.path = Path(dimension=self.dimension, nodes=self.reconstruct_path(x))
+            self.path = Path(dimension=self.dimension, nodes=x.path)
             self.gridspace = None
             log.msg('finished in %s sec, length %d, made %d iterations' % (time.time() - self.t_start, len(self.path.nodes), self.iter_count))
             log.msg('nodes %s' % self.path.nodes)
             raise StopIteration()
         self.open_set.remove(x)
         self.closed_set.add(x.coords)
-        for y in self.neighbours(x):
+        x_neighbours = self.neighbours(x)
+        for y in x_neighbours:
             if y.coords in self.closed_set:
                 continue
-            tentative_g_core = x.g + self.get_edge_cost(x, y)
+            tentative_g_core = x.g + self.get_edge_cost(x, y, x_neighbours)
             if y not in self.open_set or tentative_g_core < y.g:
+#TODO: decrease this score when discovering an impassable edge.
                 y.set_score(tentative_g_core, self.heuristic_cost_estimate(y, self.goal_node))
                 y.parent = x
                 if y not in self.open_set:
@@ -161,3 +169,4 @@ class AStar(object):
                 if y.step > self.max_cost:
                     log.err("Finding path over limit between %s and %s" % (self.start_node.coords, self.goal_node.coords))
                     raise StopIteration()
+
