@@ -166,20 +166,19 @@ class MainWindow(QMainWindow):
                 # otherwise, handle the packet.
                 self.message_handlers[message.name](message.data)
             except Exception:
-                raise
                 msg = "Error in message handler %s while handling this data:\n"
                 msg = (msg % message.name) + str(message.data)
-                log.msg(msg, exc_info=True)
+                log.msg(msg)
+                log.err()
         for name in latest_only:
             data = latest_only[name]
             try:
                 self.message_handlers[name](data)
             except Exception:
-                raise
-#                msg = "Error in message handler %s while handling this data:\n"
-#                msg = (msg % name) + str(data)
-#                log.msg(msg, exc_info=True)
-
+                msg = "Error in message handler %s while handling this data:\n"
+                msg = (msg % name) + str(data)
+                log.msg(msg)
+                log.err()
 
     def _mh_bot_name(self, name):
         """Updates the window title with the bot's name."""
@@ -231,10 +230,12 @@ if __name__ == "__main__":
 
     def customKeyboardInterruptHandler(signum, stackframe):
         """Ignore ctrl-c from user"""
-        if not counter:
-            log.msg("Third time's a charm..")
-            exit(130)
-        log.msg("ctrl-c: waiting for bot to exit cleanly")
+        counter.pop()
+        if counter:
+            log.msg("ctrl-c: waiting for bot to exit cleanly")
+            return
+        log.msg("Third time's a charm..")
+        exit(130)
     signal.signal(signal.SIGINT, customKeyboardInterruptHandler)
 
     app = QApplication(sys.argv)
