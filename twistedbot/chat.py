@@ -5,6 +5,7 @@ from collections import deque
 import config
 import behaviours
 import logbot
+import plugins
 
 log = logbot.getlogger("CHAT")
 
@@ -18,6 +19,15 @@ class Chat(object):
         self.wspace_re = re.compile(ur"\s+")
         self.chat_spam_treshold_count = 0
         self.chat_spam_treshold_buffer = deque()
+        self.verbs = {}
+        for plugin in plugins.behaviours:
+            plugin = plugins.behaviours[plugin]
+            for verb in plugin.verbs:
+                if verb in self.verbs:
+                    log.msg('Cannot override pre-existing verb "%s"' % verb)
+                    continue
+                else:
+                    self.verbs[verb] = plugin.verbs[verb]
 
     def tick(self):
         if self.chat_spam_treshold_count > 0:
@@ -72,43 +82,10 @@ class Chat(object):
         self.parse_command(verb, subject, msg)
 
     def parse_command(self, verb, subject, original):
-        if verb == "rotate" or verb == "circulate":
-            if subject:
-                self.world.bot.behaviour_tree.new_command(behaviours.WalkSignsBehaviour, group=subject, type=verb)
-            else:
-                self.send_chat_message("which sign group to %s?" % verb)
-        elif verb == "go":
-            if subject:
-                self.world.bot.behaviour_tree.new_command(behaviours.GoToSignBehaviour, sign_name=subject)
-            else:
-                self.send_chat_message("go where?")
-        elif verb == "look":
-            if subject == "at me":
-                self.world.bot.behaviour_tree.new_command(behaviours.LookAtPlayerBehaviour)
-            else:
-                self.send_chat_message("look at what?")
-        elif verb == "follow":
-            self.world.bot.behaviour_tree.new_command(behaviours.FollowPlayerBehaviour)
-        elif verb == "cancel":
-            self.world.bot.behaviour_tree.cancel_running()
-        elif verb == "show":
-            if subject:
-                sign = self.world.sign_waypoints.get_namepoint(subject)
-                if sign is not None:
-                    self.send_chat_message(str(sign))
-                    return
-                sign = self.world.sign_waypoints.get_name_from_group(subject)
-                if sign is not None:
-                    self.send_chat_message(str(sign))
-                    return
-                if not self.world.sign_waypoints.has_group(subject):
-                    self.send_chat_message("no group named %s" % subject)
-                    return
-                for sign in self.world.sign_waypoints.ordered_sign_groups[subject].iter():
-                    self.send_chat_message(str(sign))
-            else:
-                self.send_chat_message("show what?")
-        elif verb == "hello":
-            self.send_chat_message('world')
+        if verb in self.verbs:
+            context = {'chat': self, 'world': self.world,
+                       'factory': self.world.factory}
+            self.verbs[verb](subject, context)
         else:
-            self.send_chat_message("Unknown command: %s" % original)
+            context['chat'].send_chat_message("Unknown command: %s"
+                                              % verb + subject)

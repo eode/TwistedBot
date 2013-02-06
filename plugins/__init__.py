@@ -10,16 +10,12 @@ handled internally, or by the module developer.
 """
 import os as _os
 import sys as _sys
-import inspect as inspect
+import inspect as _inspect
 from glob import glob as _glob
 
 import twistedbot.logbot as _logbot
 
 _log = _logbot.getlogger('PLUGINS')
-
-
-def __getattr__(foo):
-    return locals()[foo]
 
 
 def _load_plugins(prefix, plugins, plugins_folder):
@@ -28,28 +24,27 @@ def _load_plugins(prefix, plugins, plugins_folder):
             the prefix and suffix.  Add their verbs into self.verbs.
         """
         suffix = '_plugin.py'
-        files = _glob(''.join((plugins_folder, '/', prefix, '_*', suffix)))
-        files = [f for f in files if not _os.path.basename(f).startswith('_')]
+        files = _glob(''.join((plugins_folder, '/', prefix, '*', suffix)))
         for f in files:
             assert _os.path.exists(f)
             name = _os.path.basename(f)[len(prefix):-len(suffix)]
             fullname = _os.path.basename(f)[:-len('.py')]
-
             if name in plugins:
                 msg = 'Skipping plugin "{}" (name exists already)'
                 _log.msg(msg.format(name))
                 continue
             msg = 'Loading Plugin -- Type: {}, Name: "{}", Filename: "{}"'
             _log.msg(msg.format(prefix, name, f))
-            eval("import " + fullname)
-            plugins[name] = locals()[fullname]
+            module = __import__(fullname)
+            plugins[name] = module
+
         _log.msg(str(plugins))
 
-_plugins_folder = _os.path.dirname(inspect.getfile(inspect.currentframe()))
-_log.msg(_plugins_folder)
+_plugins_folder = _os.path.dirname(_inspect.getfile(_inspect.currentframe()))
 
 if _plugins_folder not in _sys.path:
-    _sys.path.extend(_plugins_folder)
+    _log.msg("Adding "+_plugins_folder+" to sys.path")
+    _sys.path.append(_plugins_folder)
 
 behaviours = {}
 
