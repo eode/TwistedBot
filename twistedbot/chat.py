@@ -82,9 +82,11 @@ class Chat(object):
         self.parse_command(verb, subject, msg)
 
     def parse_command(self, verb, subject, original):
+        # We want the context sent into the plugin to be new each time, just
+        # in case the plugin does something weird with it.
+        context = {'chat': self, 'world': self.world,
+                   'factory': self.world.factory}
         if verb in self.verbs:
-            context = {'chat': self, 'world': self.world,
-                       'factory': self.world.factory}
             self.verbs[verb](subject, context)
         else:
             context['chat'].send_chat_message("Unknown command: %s"
