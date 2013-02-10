@@ -15,7 +15,6 @@ class Entity(object):
         self.y = kwargs["y"]
         self.z = kwargs["z"]
         self.velocity = None
-        self.is_bot = False
 
     @property
     def position(self):
@@ -27,6 +26,16 @@ class Entity(object):
         y = self.y / 32
         z = self.z / 32
         return Vector(x, y, z)
+
+    @property
+    def is_bot(self):
+        if hasattr(self, '_is_bot'):
+            return self._is_bot
+        return False
+
+    @is_bot.setter
+    def is_bot(self, value):
+        self._is_bot = value
 
 
 class EntityBot(Entity):
