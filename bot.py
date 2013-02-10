@@ -1,5 +1,4 @@
 
-
 import signal
 import argparse
 import socket
@@ -14,7 +13,6 @@ from twistedbot.factory import MineCraftFactory
 from twistedbot.world import World
 import twistedbot.config as config
 import twistedbot.logbot as logbot
-from twistedbot.utils import Message
 
 log = logbot.getlogger("MAIN")
 
