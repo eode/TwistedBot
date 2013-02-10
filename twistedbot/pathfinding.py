@@ -52,6 +52,7 @@ class PathNode(object):
         while parent is not None:
             parent = parent.parent
             step += 1
+        return step
 
     def _backpath(self):
         parent = self
@@ -132,11 +133,17 @@ class AStar(object):
                 yield PathNode(state.coords)
 
     def heuristic_cost_estimate(self, start, goal):
+        y = start.coords.y - goal.coords.y
         adx = abs(start.coords.x - goal.coords.x)
         adz = abs(start.coords.z - goal.coords.z)
+
+        fall, rise = (abs(y), 0) if y < 0 else (0, abs(y))
         h_diagonal = min(adx, adz)
         h_straight = adx + adz
-        h = config.COST_DIAGONAL * h_diagonal + config.COST_DIRECT * (h_straight - 2 * h_diagonal)
+        h = (config.COST_DIAGONAL * h_diagonal +
+             config.COST_DIRECT * (h_straight - 2 * h_diagonal) +
+             config.COST_FALL * fall +
+             config.COST_JUMP * rise)
         return h
 
     def next(self):
