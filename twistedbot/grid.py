@@ -274,6 +274,7 @@ class Grid(object):
     def downward_block(self, bb):
         x, y, z = bb.gridpos_x, bb.gridpos_y, bb.gridpos_z
         block = self.get_block(x, y, z)
+        last_block = block
         while type(block) == blocks.Air:
             last_block = block
             y = y - 1
