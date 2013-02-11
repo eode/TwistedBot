@@ -34,11 +34,9 @@ def _load_plugins(prefix, plugins, plugins_folder):
                 _log.msg(msg.format(name))
                 continue
             msg = 'Loading Plugin -- Type: {}, Name: "{}", Filename: "{}"'
-            _log.msg(msg.format(prefix, name, f))
+            _log.msg(msg.format(prefix, name, _os.path.basename(f)))
             module = __import__(fullname)
             plugins[name] = module
-
-        _log.msg(str(plugins))
 
 _plugins_folder = _os.path.dirname(_inspect.getfile(_inspect.currentframe()))
 
