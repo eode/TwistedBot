@@ -211,6 +211,9 @@ class Vector(object):
             self.z *= -1
         return self
 
+    def distance(self, other):
+        return math.sqrt((self - other).size_pow)
+
 
 class Vector2D(object):
     def __init__(self, x, z):

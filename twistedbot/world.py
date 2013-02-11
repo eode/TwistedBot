@@ -49,6 +49,8 @@ class World(object):
         self.server_host = host
         self.server_port = port
         self.commander = Commander(commander_name)
+        # Users who can give the bot non-administrative commands
+        self.managers = {}     # {'name1': eid} (or {'name1': None} if offline)
         self.chat = Chat(self)
         self.bot = BotEntity(self, bot_name)
         self.stats = Statistics()

@@ -6,6 +6,7 @@ USE_ENCRYPTION = False
 WHISPER = False
 
 COMMANDER = "lukleh"
+COMMAND_SHORTCUT = "!" # This or the username will get the bot's attention.
 
 USERNAME = "twistedbot"
 SERVER_HOST = "127.0.0.1"
@@ -39,11 +40,11 @@ SPEED_CLIMB = 0.2
 
 TIME_STEP = 0.05
 
-COST_JUMP = 1.1
 COST_LADDER = 0.21 / \
     0.15  # common speed on ground / max speed on ladder
-COST_FALL = 1.1
+COST_JUMP = 2.5
+COST_FALL = 2.5
 COST_DIRECT = 1
 COST_DIAGONAL = math.sqrt(2) * COST_DIRECT
-PATHFIND_LIMIT = 256  # roughly in blocks
+PATHFIND_LIMIT = 10    # roughly in blocks
 HORIZONTAL_MOVE_DISTANCE_LIMIT = 2.83

@@ -424,7 +424,7 @@ class BotEntity(object):
         if self.world.grid.aabb_collides(bb):
             return False
         else:
-            return not self.world.grid.is_any_liquid(bb)
+            return not self.world.grid.contains_liquid(bb)
 
     def do_respawn(self):
         self.world.send_packet("client statuses", {"status": 1})

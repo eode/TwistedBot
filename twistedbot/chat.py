@@ -16,6 +16,7 @@ class Chat(object):
         self.clean_colors_re = re.compile(ur'\u00A7.', re.UNICODE)
         self.commander_re = re.compile(
             ur'<%s> .*' % self.world.commander.name.lower(), re.UNICODE)
+        self.command_str = config.COMMAND_SHORTCUT
         self.wspace_re = re.compile(ur"\s+")
         self.chat_spam_treshold_count = 0
         self.chat_spam_treshold_buffer = deque()
@@ -37,15 +38,26 @@ class Chat(object):
 
     def send_chat_message(self, msg):
         log.msg(">> %s" % msg)
-        if self.world.commander.in_game:
-            self.chat_spam_treshold_count += 20
-            if self.chat_spam_treshold_count > 180:
-                self.chat_spam_treshold_buffer.append(msg)
-                return
-            if config.WHISPER:
-                msg = "/tell %s %s" % (self.world.commander.name, msg)
-            self.world.send_packet("chat message", {"message": msg})
-        elif self.chat_spam_treshold_buffer:
+        self.chat_spam_treshold_count += 20
+        if self.chat_spam_treshold_count > 180:
+            self.chat_spam_treshold_buffer.append(msg)
+            return
+        prefix = ''
+        if config.WHISPER:
+            prefix = '/tell %s' % self.world.commander.name
+            msg = prefix + msg
+        if len(msg) >= 100:
+            # Minecraft server balks at messages greater than 100 characters.
+            # split them up and push them into the spam buffer.
+            # cut this message in half and put it at the beginning
+            plen = len(prefix)
+            msg = msg[len(prefix):] # remove from current message
+            # and provide room for the prefix in the split message
+            self.chat_spam_treshold_buffer.appendleft(msg[100-len(prefix):])
+            self.chat_spam_treshold_buffer.appendleft(msg[:100-len(prefix)])
+            return
+        self.world.send_packet("chat message", {"message": msg})
+        if self.chat_spam_treshold_buffer:
             self.chat_spam_treshold_buffer = deque()
 
     def clean(self, orig_msg):
@@ -67,27 +79,38 @@ class Chat(object):
         return msg.partition(" ")[2]
 
     def on_chat_message(self, msg):
-        msg = self.clean(msg)
         log.msg("<< %s" % msg)
-        if self.from_commander(msg):
+        if self.from_commander(self.clean(msg)):
             command = self.get_command(msg)
             self.process_command(command, msg)
 
     def process_command(self, command, msg=None):
+#TODO: Make this more purty.
         if msg is None:
             msg = command
-        log.msg("Possible command >%s<" % command)
+        command = command.strip()
+        if not command:
+            return
+        if command.startswith(self.command_str):
+            body = command[len(self.command_str):]
+            command = ' '.join((config.USERNAME, body.strip()))
+        else:
+            first = command.split()[0]
+            if first.strip(',.!:;') not in config.USERNAME:
+                return
+        command = command.split(None, 1)[1]
+        log.msg("Message addressed to me: >%s<" % command)
         verb = self.get_verb(command)
         subject = self.get_subject(command)
         self.parse_command(verb, subject, msg)
 
-    def parse_command(self, verb, subject, original):
+    def parse_command(self, verb, indirect_object, original):
         # We want the context sent into the plugin to be new each time, just
         # in case the plugin does something weird with it.
         context = {'chat': self, 'world': self.world,
                    'factory': self.world.factory}
         if verb in self.verbs:
-            self.verbs[verb](subject, context)
+            self.verbs[verb](indirect_object, context)
         else:
-            context['chat'].send_chat_message("Unknown command: %s"
-                                              % verb + subject)
+            context['chat'].send_chat_message("Unknown command: %s" %
+                                            ' '.join((verb, indirect_object)))

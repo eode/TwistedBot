@@ -103,7 +103,8 @@ class Path(object):
 
 
 class AStar(object):
-    def __init__(self, dimension=None, start_coords=None, end_coords=None, max_cost=config.PATHFIND_LIMIT):
+    def __init__(self, dimension=None, start_coords=None, end_coords=None,
+                 max_cost=config.PATHFIND_LIMIT, use_best=True):
         self.dimension = dimension
         self.grid = dimension.grid
         self.start_node = PathNode(start_coords)
@@ -122,6 +123,8 @@ class AStar(object):
         self.start_node.set_score(0, self.heuristic_cost_estimate(self.start_node, self.goal_node))
         self.iter_count = 0
         self.t_start = time.time()
+        self.best = None
+        self.use_best = use_best
 
     def get_edge_cost(self, node_from, node_to,
                       x_neighbors=None, y_neighbors=None):
@@ -151,6 +154,9 @@ class AStar(object):
         if not self.open_set:
             log.msg('time consumed %s sec, made %d iterations' % (time.time() - self.t_start, self.iter_count))
             log.err("Did not find path between %s and %s" % (self.start_node.coords, self.goal_node.coords))
+            if self.use_best and self.best is not None:
+                self.path = Path(dimension=self.dimension,
+                                 nodes=self.best.path)
             raise StopIteration()
         x = heapq.heappop(self.open_heap)
         if x == self.goal_node:
@@ -169,11 +175,17 @@ class AStar(object):
             if y not in self.open_set or tentative_g_core < y.g:
 #TODO: decrease this score when discovering an impassable edge.
                 y.set_score(tentative_g_core, self.heuristic_cost_estimate(y, self.goal_node))
+                if self.best is None or y.f < self.best:
+                    self.best = y
                 y.parent = x
                 if y not in self.open_set:
                     heapq.heappush(self.open_heap, y)
                     self.open_set.add(y)
                 if y.step > self.max_cost:
+                    if self.use_best and self.best is not None:
+                        self.path = Path(dimension=self.dimension,
+                                         nodes=self.best.path)
+                        raise StopIteration()
                     log.err("Finding path over limit between %s and %s" % (self.start_node.coords, self.goal_node.coords))
                     raise StopIteration()
 

@@ -16,9 +16,14 @@ class Entity(object):
         self.z = kwargs["z"]
         self.velocity = None
 
-    @property
-    def position(self):
-        return Vector(self.x / 32.0, self.y / 32.0, self.z / 32.0)
+    is_bot = property(lambda s: s._bot if hasattr(s, '_bot') else False,
+                      lambda s, v: setattr(s, '_is_bot', v))
+
+    is_manager = property(lambda s: s._mgr if hasattr(s, '_mgr') else False,
+                      lambda s, v: setattr(s, '_mgr', v))
+
+    is_commander = property(lambda s: s._cmd if hasattr(s, '_cmd') else False,
+                            lambda s, v: setattr(s, '_cmd', v))
 
     @property
     def grid_position(self):
@@ -28,14 +33,12 @@ class Entity(object):
         return Vector(x, y, z)
 
     @property
-    def is_bot(self):
-        if hasattr(self, '_is_bot'):
-            return self._is_bot
-        return False
+    def position(self):
+        return Vector(self.x / 32.0, self.y / 32.0, self.z / 32.0)
 
-    @is_bot.setter
-    def is_bot(self, value):
-        self._is_bot = value
+    def distance(self, other):
+        """Return the distance between two entities"""
+        return self.position.distance(other.position)
 
 
 class EntityBot(Entity):
@@ -73,9 +76,46 @@ class EntityMob(EntityLiving):
 class EntityPlayer(EntityLiving):
     def __init__(self, **kwargs):
         super(EntityPlayer, self).__init__(**kwargs)
+        self.world = kwargs["world"]
         self.username = kwargs["username"]
         self.held_item = kwargs["held_item"]
-        #TODO Assign head positioning info
+        # Player's looking direction
+        self.yaw = kwargs["yaw"]
+        self.pitch = kwargs["pitch"]
+
+        if self.world.commander.name == self.username:
+            self.world.commander.eid = self.eid
+            self.is_commander = True
+        elif self.username in self.world.managers:
+            self.world.managers[self.username] = self.eid
+            self.is_manager = True
+        if self.is_commander:
+            log.msg("Found commander: " + self.username)
+        elif self.is_manager:
+            log.msg("Found manager: " + self.username)
+        else:
+            log.msg("Found player: " + self.username)
+
+    def __del__(self):
+        if not hasattr(self, 'world'):
+            log.msg("%s object had no world attribute." % str(type(self)))
+            return
+        if self.is_commander:
+            if self.world.commander.eid == self.eid:
+                log.msg("Lost commander (%s)" % self.username)
+                self.world.commander.eid = None
+            else:
+                log.msg("Warning, destroyed a commander entity, but "
+                        "eid does not match world.commander.eid")
+        elif self.is_manager:
+            if self.world.managers[self.username] == self.eid:
+                log.msg("Lost manager '%s'" % self.username)
+                self.world.managers[self.username] = None
+            else:
+                log.msg("Warning, destroyed a manager player entity, but "
+                        "eid does not match the one in world.managers.")
+        else:
+            log.msg("Player '%s' logged off." % self.username)
 
 
 class EntityVehicle(Entity):
@@ -113,6 +153,7 @@ class Entities(object):
         self.dimension = dimension
         self.world = dimension.world
         self.entities = {}
+        self.players = {}
 
     def has_entity(self, eid):
         return eid in self.entities
@@ -123,6 +164,7 @@ class Entities(object):
         return self.entities.get(eid, None)
 
     def maybe_commander(self, entity):
+        """Note the commander's last position, presumably usable somewhere."""
         if self.world.commander.eid != entity.eid:
             return
         gpos = entity.grid_position
@@ -155,9 +197,9 @@ class Entities(object):
         self.entities[eid] = EntityBot(eid=eid, x=0, y=0, z=0)
 
     def on_new_player(self, **kwargs):
-        self.entities[kwargs["eid"]] = EntityPlayer(**kwargs)
-        if self.world.commander.name == kwargs["username"]:
-            self.world.commander.eid = kwargs["eid"]
+        username, eid = kwargs['username'], kwargs['eid']
+        self.entities[eid] = EntityPlayer(world=self.world, **kwargs)
+        self.players[username] = eid
 
     def on_new_dropped_item(self, **kwargs):
         self.entities[kwargs["eid"]] = EntityDroppedItem(**kwargs)
@@ -179,8 +221,8 @@ class Entities(object):
             entity = self.get_entity(eid)
             if entity:
                 del self.entities[eid]
-                if self.world.commander.eid == eid:
-                    self.world.commander.eid = None
+                if isinstance(entity, EntityPlayer):
+                    self.players.pop(entity.username)
             else:
                 log.msg('Cannot destroy entity id %d because it is not registered' % eid)
 

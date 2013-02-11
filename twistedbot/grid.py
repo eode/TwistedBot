@@ -210,7 +210,7 @@ class Grid(object):
             if blk is not None:
                 yield blk
 
-    def is_any_liquid(self, bb):
+    def contains_liquid(self, bb):
         for blk in self.blocks_in_aabb(bb):
             if blk.material.is_liquid:
                 return True
@@ -237,7 +237,7 @@ class Grid(object):
 
     def aabb_on_ladder(self, bb):
         blk = self.get_block(bb.gridpos_x, bb.gridpos_y, bb.gridpos_z)
-        return blk.number == blocks.Ladders.number or blk.number == blocks.Vines.number
+        return blk.number in (blocks.Ladders.number, blocks.Vines.number)
 
     def aabb_in_water(self, bb):
         #TODO return the bast water block instead of boolean
@@ -267,6 +267,19 @@ class Grid(object):
             if self.aabb_in_water(bb):
                 standing_on = self.get_block(bb.grid_x, bb.grid_y, bb.grid_z)
         return standing_on
+
+    def actual_block(self, bb):
+        return self.get_block(bb.gridpos_x, bb.gridpos_y, bb.gridpos_z)
+
+    def downward_block(self, bb):
+        x, y, z = bb.gridpos_x, bb.gridpos_y, bb.gridpos_z
+        block = self.get_block(x, y, z)
+        while type(block) == blocks.Air:
+            last_block = block
+            y = y - 1
+            assert y > -1024   # The levels aren't that deep..
+            block = self.get_block(x, y, z)
+        return last_block
 
     def aabb_in_chunks(self, bb):
         chunk_coords = set()
