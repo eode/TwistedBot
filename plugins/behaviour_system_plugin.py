@@ -9,14 +9,16 @@ from twistedbot.logbot import getlogger
 
 log = getlogger('SYSTEM PLUGINS')
 
-def rotate_and_circulate(data, context):
+
+def rotate_and_circulate(user, verb, data, context):
         if data:
             context['world'].bot.behaviour_tree.new_command(
                         behaviours.WalkSignsBehaviour, group=data, type=verb)
         else:
             context['chat'].send_chat_message("which sign group to %s?" % verb)
 
-def go(data, context):
+
+def go(user, verb, data, context):
     world, chat = context['world'], context['chat']
     if data:
         split_data = data.split()
@@ -31,7 +33,7 @@ def go(data, context):
         context['chat'].send_chat_message("go where?")
 
 
-def look(data, context):
+def look(user, verb, data, context):
     world, chat = context['world'], context['chat']
     new_command = world.bot.behaviour_tree.new_command
 
@@ -48,14 +50,20 @@ def look(data, context):
         new_command(behaviours.LookAtPlayerBehaviour, player=data[1].strip())
 
 
-def follow(data, context):
+def follow(user, verb, data, context):
     new_command = context['world'].bot.behaviour_tree.new_command
-    new_command(behaviours.FollowPlayerBehaviour)
+    data = data.strip()
+    if data:
+        new_command(behaviours.FollowPlayerBehaviour, player=data)
+    else:
+        new_command(behaviours.FollowPlayerBehaviour)
 
-def cancel(data, context):
+
+def cancel(user, verb, data, context):
     context['world'].bot.behaviour_tree.cancel_running()
 
-def show(data, context):
+
+def show(user, verb, data, context):
     if data:
         sign = context['world'].sign_waypoints.get_namepoint(data)
         if sign is not None:
@@ -73,17 +81,19 @@ def show(data, context):
     else:
         context['chat'].send_chat_message("show what?")
 
-def shortcut(data, context):
+
+def shortcut(user, verb, data, context):
     data = data.strip()
     context['chat'].command_str = data
     context['chat'].send_chat_message("Command shortcut set to: " + data)
 
-def report(data, context):
+
+def report(user, verb, data, context):
     context['world'].bot.behaviour_tree.announce_behaviour()
 
-def py_eval(data, context):
+
+def py_eval(user, verb, data, context):
     world, chat = context['world'], context['chat']
-    from twistedbot.axisbox import AABB
     try:
         val = str(eval(data.strip()))
     except Exception, e:
@@ -92,6 +102,10 @@ def py_eval(data, context):
     # chat will messages if they contain specific characters.
     val = val.replace('<', '*').replace('>', '*').replace('|', '~')
     chat.send_chat_message(val)
+
+
+def long_message(user, verb, data, context):
+    context['chat'].send_chat_message('OMG PONIES!!' * 50)
 
 
 verbs = {
@@ -106,4 +120,5 @@ verbs = {
     'show': show,
     'shortcut': shortcut,
     'eval': py_eval,
+    'long_message': long_message,
     }
