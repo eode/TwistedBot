@@ -16,20 +16,19 @@ class Sign(object):
         self.line4 = line4.strip().lower()
         self.value = None
         self.decode()
-        self.is_waypoint = self.line1 == "waypoint"
+        self.is_waypoint = self.line1 == "waypoint" and self.line2
         self.is_groupable = self.group and self.value is not None
 
     def decode(self):
-        self.line2 = re.sub(ur"\s+", " ", self.line2)
-        self.line3 = re.sub(ur"\s+", " ", self.line3)
-        self.line4 = re.sub(ur"\s+", " ", self.line4)
-        try:
-            self.name = self.line4
-            self.value = float(re.sub(ur",", ".", self.line2))
-        except ValueError:
-            self.name = self.line2
-            self.value = None
+        self.line2 = re.sub(ur"\s+", " ", self.line2).strip()
+        self.line3 = re.sub(ur"\s+", " ", self.line3).strip()
+        self.line4 = re.sub(ur"\s+", " ", self.line4).strip()
+        self.name = self.line2
         self.group = self.line3
+        try:
+            self.value = float(re.sub(ur",", ".", self.line4))
+        except ValueError:
+            self.value = None
 
     def __gt__(self, sign):
         return self.value > sign.value
