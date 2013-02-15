@@ -156,7 +156,7 @@ class BotEntity(object):
         """
         if b_obj.action != b_obj._action:
             b_obj.action = b_obj._action
-            self.send_packet("entity action", {"eid": self.eid, "action": b_obj._action})
+            self.world.send_packet("entity action", {"eid": self.eid, "action": b_obj._action})
 
     def turn_to_point(self, b_obj, point):
         if point[0] == b_obj.x and point[2] == b_obj.z:
