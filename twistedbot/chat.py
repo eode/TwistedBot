@@ -85,7 +85,7 @@ class Chat(object):
             return
         log.msg("Message addressed to me: >%s<" % command)
         verbdata = command.split(None, 1)
-        verb, data = verbdata if len(verbdata) == 2 else verbdata[0], ''
+        verb, data = verbdata if len(verbdata) == 2 else (verbdata[0], '')
         # Now, we'll execute the appropriate plugin.
         context = {'chat': self, 'world': self.world,
                    'factory': self.world.factory}
