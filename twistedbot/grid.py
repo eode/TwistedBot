@@ -275,12 +275,15 @@ class Grid(object):
         x, y, z = bb.gridpos_x, bb.gridpos_y, bb.gridpos_z
         block = self.get_block(x, y, z)
         last_block = block
-        while type(block) == blocks.Air:
+        while y > -1024:  # The levels aren't that deep..
             last_block = block
             y = y - 1
-            assert y > -1024   # The levels aren't that deep..
             block = self.get_block(x, y, z)
-        return last_block
+            if block.can_stand_on:
+                return last_block
+            if block.is_climbable:
+                return block
+        assert y != -1024
 
     def aabb_in_chunks(self, bb):
         chunk_coords = set()
