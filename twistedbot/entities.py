@@ -210,10 +210,10 @@ class Entities(dict):
         self.world = dimension.world
         self.players = {}
 
-	def __setitem__(self, k, v):
-		if k is None:
-			raise ValueError("Entity man not have an eid of None")
-		return super(Entities, self).__setitem__(k, v)
+    def __setitem__(self, k, v):
+        if k is None:
+            raise ValueError("Entity man not have an eid of None")
+        return super(Entities, self).__setitem__(k, v)
 
     def get_entity(self, eid):
         return self.get(eid, None)

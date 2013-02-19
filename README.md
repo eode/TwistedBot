@@ -24,11 +24,11 @@ Twitter [@lukleh](https://twitter.com/lukleh "@lukleh")
 #### Usage
 By default connects to localhost
 
-	pypy bot.py 
+    pypy bot.py 
 
 Possible flags
 
-	pypy bot.py -h
+    pypy bot.py -h
 
 #### In game commands
 If your username (commander) is set, then you can use chat to send commands to bot.
@@ -58,12 +58,12 @@ Use signs as a waypoints. When you want the sign to be part of waypoints that bo
 #### Usage
 To run with defaults, server is localhost:25565 and proxy is listening on localhost:25566. Then connect your client to localhost:25566.
 
-	pypy proxy.py
-	
+    pypy proxy.py
+    
 When you close proxy, it prints packet statistics before exit.
 
 Possible flags
 
-	pypy proxy.py -h
+    pypy proxy.py -h
 
 To make your own filter, look in twistedbot.proxy_processors.default for an example.

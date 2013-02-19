@@ -137,8 +137,8 @@ class World(object):
         self.entities, self.grid = d.entities, d.grid
         self.sign_waypoints = d.sign_waypoints
         if self.bot.eid not in self.entities:
-	        # no etype given as EntityBot has no server-side corollary
-			new_bot = entities.EntityBot(eid=self.bot.eid, x=0, y=0, z=0)
+            # no etype given as EntityBot has no server-side corollary
+            new_bot = entities.EntityBot(eid=self.bot.eid, x=0, y=0, z=0)
             self.entities[new_bot.eid] = new_bot
 
     def on_login(self, bot_eid=None, game_mode=None, dimension=None,
