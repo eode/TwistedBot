@@ -4,7 +4,6 @@ from collections import deque
 from twisted.internet.protocol import ReconnectingClientFactory, Protocol
 from twisted.internet import reactor
 
-import plugins
 import config
 import logbot
 import proxy_processors.default
@@ -17,6 +16,13 @@ proxy_processors.default.filter_packets = []
 
 log = logbot.getlogger("PROTOCOL")
 
+# Packet debugging enabled by default if debugging is on.
+log_packet_types = dict([(x, False) for x in xrange(256)])
+# Disable packet debugging for these packet types:
+enabled_packets = []
+
+for pack in enabled_packets:
+    log_packet_types[pack] = True
 
 class MineCraftProtocol(Protocol):
     def __init__(self, world):
@@ -29,10 +35,12 @@ class MineCraftProtocol(Protocol):
         self.router = {
             0: self.p_ping,
             1: self.p_login,
+            # 2: handshake to server
             3: self.p_chat,
             4: self.p_time,
             5: self.p_entity_equipment,
             6: self.p_spawn,
+            # 7: self.p_use_entity (client to server),
             8: self.p_health,
             9: self.p_respawn,
             13: self.p_location,
@@ -114,15 +122,17 @@ class MineCraftProtocol(Protocol):
         parsed_packets, self.leftover = parse_packets(
             self.leftover + bytestream)
         if config.DEBUG:
-            packet_printout(
-                "SERVER", parsed_packets, self.encryption_on, self.leftover)
+            packet_printout("SERVER", parsed_packets, self.encryption_on,
+                            self.leftover, log_packet_types)
         self.packets.extend(parsed_packets)
         self.packet_iter(self.packets)
 
     def send_packet(self, name, payload):
         p = make_packet(name, payload)
         if config.DEBUG:
-            packet_printout("CLIENT", [(packets_by_name[name], Container(**payload))])
+            packet_printout("CLIENT",
+                            [(packets_by_name[name], Container(**payload))],
+                            types=log_packet_types)
         self.sendData(p)
 
     def packet_iter(self, ipackets):
@@ -164,11 +174,14 @@ class MineCraftProtocol(Protocol):
         self.world.on_time_update(**c)
 
     def p_entity_equipment(self, c):
-        pass
+        log.msg("entity_equipment packet received:\n"+ str(c))
 
     def p_spawn(self, c):
         log.msg("SPAWN POSITION %s %s %s" % (c.x, c.y, c.z))
         self.world.on_spawn_position(c.x, c.y, c.z)
+
+    def p_use_entity(self, c):
+        log.msg("'use entity' received fom server: %s" % str(c))
 
     def p_health(self, c):
         self.world.to_gui('health', c)
@@ -206,7 +219,8 @@ class MineCraftProtocol(Protocol):
         pass
 
     def p_animate(self, c):
-        #TODO this is two way, client uses only value 1 (swing arm). Probably needed.
+        # Ignored from server
+#TODO this is two way, client uses only value 1 (swing arm). Probably needed.
         pass
 
     def p_player(self, c):

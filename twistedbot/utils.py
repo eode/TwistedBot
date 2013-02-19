@@ -89,7 +89,8 @@ class OrderedLinkedList(object):
         return len(self.olist)
 
     def __str__(self):
-        return "%s %s [%s]" % (self.name, len(self), ",".join([str((o.order, o.obj)) for o in self.olist]))
+        return "%s %s [%s]" % (self.name, len(self),
+                        ", ".join([str((o.order, o.obj)) for o in self.olist]))
 
     def iter(self, forward_direction=True):
         if forward_direction:
@@ -141,6 +142,8 @@ class OrderedLinkedList(object):
 
 
 class Vector(object):
+    __slots__ = ['x', 'y', 'z']
+
     def __init__(self, x, y, z):
         self.x = x
         self.y = y
@@ -166,10 +169,10 @@ class Vector(object):
         return Vector(self.x * m, self.y * m, self.z * m)
 
     def __str__(self):
-        return "<%s %s %s>" % (self.x, self.y, self.z)
+        return "x:%s y:%s z:%s" % (self.x, self.y, self.z)
 
     def __repr__(self):
-        return self.__str__()
+        return '<%s>' % self.__str__()
 
     @property
     def tuple(self):

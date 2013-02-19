@@ -1,11 +1,12 @@
 
 import math
 
-DEBUG = False
+DEBUG = True
 USE_ENCRYPTION = False
 WHISPER = False
 
 COMMANDER = "lukleh"
+MANAGERS = ['kristy']
 COMMAND_SHORTCUT = "!" # This or the username will get the bot's attention.
 
 USERNAME = "twistedbot"
@@ -29,6 +30,9 @@ MAX_STEP_HEIGHT = 0.5
 MAX_WATER_JUMP_HEIGHT = 0.67
 MAX_VINE_JUMP_HEIGHT = 0.35
 
+# Longest time a single move should take.
+MAX_SINGLE_MOVE_TIME = 2
+
 # 0.08 block/tick - drag 0.02 blk/tick (used as final multiply by 0.98)
 BLOCK_FALL = 0.08
 DRAG = 0.98
@@ -42,9 +46,10 @@ TIME_STEP = 0.05
 
 COST_LADDER = 0.21 / \
     0.15  # common speed on ground / max speed on ladder
-COST_JUMP = 2.5
-COST_FALL = 2.5
+COST_JUMP = 1.7
+COST_FALL = 1.2
 COST_DIRECT = 1
 COST_DIAGONAL = math.sqrt(2) * COST_DIRECT
-PATHFIND_LIMIT = 10    # roughly in blocks
+PATHFIND_MAX = 64     # (future) Max distance to use pathfinder for
+PATHFIND_MIN = 30     # (future) Always use at least this much pathfinding
 HORIZONTAL_MOVE_DISTANCE_LIMIT = 2.83

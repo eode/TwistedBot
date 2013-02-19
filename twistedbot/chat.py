@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 
 import re
 from collections import deque
@@ -13,7 +14,7 @@ log = logbot.getlogger("CHAT")
 class Chat(object):
     def __init__(self, world):
         self.world = world
-        self.clean_colors_re = re.compile(ur'\u00A7.', re.UNICODE)
+#        self.clean_colors_re = re.compile(ur'\xA7.', re.UNICODE)
         self.command_str = config.COMMAND_SHORTCUT
         self.wspace_re = re.compile(ur"\s+")
         self.chat_spam_threshold_count = 0
@@ -36,12 +37,12 @@ class Chat(object):
         if self.chat_spam_threshold_count <= self.free_messages \
           and self.chat_spam_threshold_buffer:
             message, who = self.chat_spam_threshold_buffer.popleft()
-            self._send_chat_message(message, who)
+            self._send_message(message, who)
 
-    def send_chat_message(self, msg, who=config.COMMANDER):
+    def send_message(self, msg, who=config.COMMANDER):
         self.chat_spam_threshold_buffer.append((msg, who))
 
-    def _send_chat_message(self, msg, who):
+    def _send_message(self, msg, who):
         self.chat_spam_threshold_count += self.message_cost
         prefix = ''
         if config.WHISPER:
@@ -64,13 +65,25 @@ class Chat(object):
     def on_chat_message(self, msg):
         """Split the chat message into speaker and message, and accept it if
         it's from an authority (commander or managers)"""
+        msg = self.clean(msg)
         log.msg("<< %s" % msg)
         speaker, message = msg.split(None, 1)
         speaker = speaker.strip('<>')
-        self.process_command(speaker, self.clean(message))
+        self.process_command(speaker, message)
 
-    def clean(self, orig_msg):
-        msg = self.clean_colors_re.sub('', orig_msg)
+    def clean(self, msg):
+        """Minecraft messages may contain a control character '\xa7' which is
+        then followed by one of '0123456789abcdefklmnor'.  Not to mention not
+        being useful, these interfere with twisted's logging.  ..so, we strip
+        them.  In theory, if a player could send a message with the 'random'
+        style, twistedbot would still be able to read the message (while others
+        would not, unless they had a client that strips the 'random' flag and
+        control character).
+        """
+        control_char = u'\xa7'
+        while control_char in msg:
+            loc = msg.find(control_char)
+            msg = msg[:loc] + msg[loc+2:]
         msg = self.wspace_re.sub(" ", msg)
         msg = msg.strip()
         return msg
@@ -92,7 +105,7 @@ class Chat(object):
         if verb in self.verbs:
             self.verbs[verb](speaker, verb, data, context)
         else:
-            self.send_chat_message("Unknown command: %s %s " % (verb, data))
+            self.send_message("Unknown command: %s %s " % (verb, data))
 
     def _is_authoritative(self, speaker):
         if speaker.lower() == config.COMMANDER.lower()\
@@ -110,7 +123,7 @@ class Chat(object):
         # ..or with the bot's name (possibly ending with one of ,.!?:;)
         ignored = ',.!?:;'  # Ignore these if they're pended to bot name
         fm = message.split(None, 1)
-        first, message = fm if len(fm) == 2 else fm[0], ''
+        first, message = fm if len(fm) == 2 else (fm[0], '')
         if first.strip(ignored).lower() == config.USERNAME.lower():
             return message
         return ''

@@ -13,11 +13,12 @@ from axisbox import AABB
 from gridspace import GridSpace
 from time import time
 
-
+debug = True
 log = logbot.getlogger("BEHAVIOUR_TREE")
 
 
 class Status(object):
+    names = {20: 'success', 30: 'failure', 40: 'running', 50: 'suspended'}
     success = 20
     failure = 30
     running = 40
@@ -57,6 +58,13 @@ class BehaviourTree(object):
 
     @property
     def current_goal(self):
+        for b in reversed(self.bqueue):
+            if b.priority > Priorities.sub_behaviour:
+                return b
+        return None
+
+    @property
+    def preferred_goal(self):
         fpriority = lambda b: b.priority  # return the priority of b.
         return max(self.bqueue, key=fpriority) if self.bqueue else None
 
@@ -105,7 +113,10 @@ class BehaviourTree(object):
         # behaviour = (SomeBehaviour, {'priority': Priorities.survival})
         return None
 
-    def tick(self):
+    def tick(self, cancel=None):
+        if cancel is not None:
+            log.msg("Cancelling at value " + str(cancel))
+            self.cancel_running(cancel)
         if not self.bqueue:
             self.select_goal()
         if self.running:
@@ -124,9 +135,9 @@ class BehaviourTree(object):
                 if g.status == Status.running:
                     yield g.tick()
                 self.bot.bot_object.hold_position_flag = g.hold_position_flag
-                if g.cancelled:
-                    break
-                elif g.status == Status.running:
+#                if g.cancelled:
+#                    break
+                if g.status == Status.running:
                     break
                 elif g.status == Status.suspended:
                     continue
@@ -140,7 +151,7 @@ class BehaviourTree(object):
                 msg = "I'm not even doing anything and my brain hurts."
             log.msg(msg)
             log.err()
-            self.world.chat.send_chat_message(msg)
+            self.world.chat.send_message(msg)
             self.cancel_running(Priorities.absolute_top)
         self.running = False
 
@@ -149,6 +160,8 @@ class BehaviourTree(object):
         The special variable "to_parent" is read from the leaf and sent to the
         parent.from_child() as kwargs if it is present."""
         leaf = self.bqueue.pop()
+        status = Status.names[leaf.status]
+        log.msg('"%s" returning %s' % (str(leaf.name), status))
         if self.bqueue:
             kwargs = leaf.to_parent if hasattr(leaf, 'to_parent') else {}
             self.current_behaviour.from_child(leaf.status, **kwargs)
@@ -162,10 +175,13 @@ class BehaviourTree(object):
           - a command of greater priority is found: return
           - all commands are canceled
         """
+        log.msg("cancel_running")
         for behaviour in reversed(self.bqueue):
             if behaviour.priority < priority:
+                log.msg("cancelling "+behaviour.name)
                 behaviour.cancel()
             elif behaviour.priority == priority:
+                log.msg("last cancel: "+behaviour.name)
                 behaviour.cancel()
                 return
             else:
@@ -190,29 +206,35 @@ class BehaviourTree(object):
                 msg = ("I'd like to try %s, but I'm currently %s, "
                        "which is more important.")
                 msg = msg % (new_goal.name, current_goal.name)
-                self.world.chat.send_chat_message(msg)
+                self.world.chat.send_message(msg)
 
     def new_command(self, behaviour, **kwargs):
         self.user_command = (behaviour, kwargs)
-        #self.world.chat.send_chat_message("New behaviour: %s" % bh.name)
+        #self.world.chat.send_message("New behaviour: %s" % bh.name)
 
     def announce_behaviour(self, bh=None):
         if bh is not None:
             log.msg("Added goal: "+bh.name)
-            self.world.chat.send_chat_message("Ok, " + bh.name)
+            self.world.chat.send_message("Ok, " + bh.name)
             return
         behaviour, goal = self.current_behaviour, self.current_goal
+        preferred = self.preferred_goal
         log.msg("Current Goal: %s" % goal.name)
-        log.msg("Current Behaviour: '%s'" % behaviour.name)
+        log.msg("Current Behaviour: %s" % behaviour.name)
+        log.msg("Preferred Behaviour: %s" % preferred.name)
         msg = "I am currently " + behaviour.name
         if behaviour.name != goal.name:
             msg = msg + " because I am %s" % goal.name
-        self.world.chat.send_chat_message(msg)
+        self.world.chat.send_message(msg)
+        if preferred.name != goal.name and preferred.name != behaviour.name:
+            msg = "..but I'd rather be " + preferred.name
+            self.world.chat.send_message(msg)
 
 
 
 class BehaviourBase(object):
     def __init__(self, **kwargs):
+        self.to_parent = {}
         self.manager = kwargs['manager']
         self.priority = kwargs['priority']
         self.world = self.manager.world
@@ -223,13 +245,15 @@ class BehaviourBase(object):
         # they should fit after "I am.." and make a sentence.
         # kwargs sent to parent's 'from_child' method on exit
         name = "thinking someone forgot to change their behaviour name."
-        self.to_parent = {}
         self.cancelled = False
         self.failure_count = 1
         self.failure_max = 5
 
     cancelled = property(lambda s: s.to_parent['cancelled'],
                          lambda s, v: s.to_parent.__setitem__('cancelled', v))
+
+    priority = property(lambda s: s.to_parent['priority'],
+                        lambda s, v: s.to_parent.__setitem__('priority', v))
 
     @inlineCallbacks
     def tick(self):
@@ -251,8 +275,10 @@ class BehaviourBase(object):
     def _tick(self):
         raise NotImplemented('_tick')
 
-    def from_child(self, child_status, **kwargs_from_child):
+    def from_child(self, child_status, cancelled, **kwargs_from_child):
         """Modify behaviour based on child's exit status"""
+        if self.cancelled == True:
+            return
         self.status = Status.running
         if child_status == Status.failure:
             self.failure_count += 1
@@ -277,14 +303,17 @@ class LookAtPlayerBehaviour(BehaviourBase):
         self.name = 'looking at player %s' % self.player
 
     def _tick(self):
+        if self.cancelled:
+            self.status = Status.failure
+            return
         if not self.player in self.world.entities.players:
             return
         player_eid = self.world.entities.players[self.player]
         player = self.world.entities.get_entity(player_eid)
         if player is None:
             return
-        p = player.position
-        self.bot.turn_to_point(self.bot.bot_object, (p.x, p.y + config.PLAYER_EYELEVEL, p.z))
+        p = player.position + utils.Vector(0, config.PLAYER_EYELEVEL, 0)
+        self.bot.turn_to_point(self.bot.bot_object, p.tuple)
 
 
 class WalkSignsBehaviour(BehaviourBase):
@@ -307,9 +336,12 @@ class WalkSignsBehaviour(BehaviourBase):
             raise Exception("unknown walk sign type")
 
     def _tick(self):
+        if self.cancelled:
+            self.status = Status.failure
+            return
         if not self.world.sign_waypoints.has_group(self.group):
             msg = "No group named '%s'" % self.group
-            self.world.chat.send_chat_message(msg)
+            self.world.chat.send_message(msg)
             self.status = Status.failure
             return
         sign_data = self.next_sign(self.group, self.signpoint,
@@ -337,14 +369,19 @@ class GoToSignBehaviour(BehaviourBase):
         self.name = 'going to the sign "%s"' % self.sign_name
 
     def from_child(self, status, **kwargs):
+        if self.cancelled:
+            return
         self.status = status
 
     def _tick(self):
+        if self.cancelled:
+            self.status = Status.failure
+            return
         self.signpoint = self.world.sign_waypoints.get_namepoint(self.sign_name)
         if self.signpoint is None:
             self.signpoint = self.world.sign_waypoints.get_name_from_group(self.sign_name)
         if self.signpoint is None:
-            self.world.chat.send_chat_message("cannot idetify sign with name %s" % self.sign_name)
+            self.world.chat.send_message("cannot idetify sign with name %s" % self.sign_name)
             self.status = Status.failure
             return
         if not self.world.sign_waypoints.check_sign(self.signpoint):
@@ -364,41 +401,67 @@ class FollowPlayerBehaviour(BehaviourBase):
         self.last_position = None
         self.name = "following %s" % self.player
         self.last_attempt = 0
-        self.recalc_seconds = 5
+        # distance * recalc_multiplier = seconds before automatic recalc
+        self.recalc_multiplier = 0.25
 
-    def from_child(self, status, **kwargs):
-        # We don't care if our child fails, this is a persistent behaviour.
+    def from_child(self, status, goal=None, endpoint=None, estimated=None,
+                   **kwargs):
+        """kwargs in child's 'to_parent' dict must include the following:
+            status := (Status attribute)
+            goal := Goal as set last round
+            endpoint := Actual point traversed to
+            estimated := Bool - Whether or not the endpoint was estimated.
+        This information is recorded so that the stuck method can determine
+        if the bot is stuck or not.
+        """
+        if self.cancelled:
+            return
+        # Even if our child fails, Status should still be 'running', since this
+        # is a persistent behaviour.
         self.status = Status.running
-        self.last_position = self.bot.bot_object.position_grid
+        self.return_processed = True
 
-    def __del__(self):
-        log.msg("Destroying Behaviour: " + self.name)
+#    def __del__(self):
+#        log.msg("Destroying Behaviour: " + self.name)
 
     def _tick(self):
+        if self.cancelled:
+            self.status = Status.failure
+            return
         if not self.player in self.world.entities.players:
             return
-        entity = self.world.entities.get_entity(self.world.commander.eid)
+        eid = self.world.entities.players[self.player]
+        entity = self.world.entities.get_entity(eid)
         bot_object = self.world.bot.bot_object
-        #block = self.world.grid.standing_on_block(AABB.from_player_coords(entity.position))
         bb = AABB.from_player_coords(entity.position)
-        block = self.world.grid.downward_block(bb)
+        block = self.world.grid.standing_on_block(bb)
+        if block is None:
+            block = self.world.grid.actual_block(bb)
+#        #block = self.world.grid.downward_block(bb)
         distance = bot_object.position.distance(entity.position)
-#        if block is None:
-#            return
+        delay = distance * self.recalc_multiplier
+        #don't auto-recalculate more than once a second.
+        delay = delay if delay > 1 else 1
         if (self.last_block != block
-          or distance > config.PATHFIND_LIMIT * 0.5
-          or time() - self.last_attempt > self.recalc_seconds
-          or self.last_position != self.bot.bot_object.position_grid):
+#          or distance > config.PATHFIND_MAX * 0.5  #actual path may be crooked
+          or time() - self.last_attempt > delay):
+          #or self.last_position != self.bot.bot_object.position_grid):
+            log.msg('recalculating move..')
+            # Cancel any other running behaviours we're doing
+            self.manager.cancel_running(priority=self.priority - 1)
+            self.last_position = self.bot.bot_object.position_grid
             self.last_attempt = time()
-            position = self.bot.bot_object.position_grid
             self.last_block = block
-            self.add_subbehaviour(TravelToBehaviour, coords=block.coords, shorten_path_by=2)
+            self.add_subbehaviour(TravelToBehaviour, coords=block.coords,
+                                  shorten_path_by=2, estimate=True)
 
 
 class TravelToBehaviour(BehaviourBase):
-    """"Travel to a coordinate.
-    travel_coords := Coordinates to travel to
-    shorten_path_by := remove a number of steps at the end of the path
+    """"Travel to a coordinate, and abort if there is something that prevents
+    that.
+        coords := Coordinates to travel to
+        shorten_path_by := remove a number of steps at the end of the path
+        recurse := Use an additional instance to smooth motion
     """
     def __init__(self, *args, **kwargs):
         super(TravelToBehaviour, self).__init__(*args, **kwargs)
@@ -408,7 +471,10 @@ class TravelToBehaviour(BehaviourBase):
         log.msg(self.name)
         self.fail_count = 0
         self.fail_limit = 5
-
+        self.start_time = time()
+        f = kwargs.get('check_status_method')
+        self.check_status = f if f else lambda: True
+        self.recurse = kwargs.get('recurse', False)
 
     @property
     def travel_coords(self):
@@ -432,18 +498,10 @@ class TravelToBehaviour(BehaviourBase):
                                 end_coords=self.travel_coords)).whenDone()
             d.addErrback(logbot.exit_on_error)
             astar = yield d
-#            log.msg("self.status: " + str(self.status))
             if astar is None or astar.path is None:
                 self.status = Status.failure
             else:
                 current_start = self.bot.standing_on_block(self.bot.bot_object)
-                path_end = astar.path.nodes[-1]
-#TODO: this
-                # Avoid pathfinding errors -- if the end of the path is further
-                # from the goal than the beginning of the path, then we have a
-                # bad pathfind.
-                # this occurs when, for example, the player is flying above an
-                # inaccessible area, and the cost for going vertical is high.
                 if sb == current_start:
                     self.path = astar.path
                     self.path.remove_last(self.shorten_path_by)
@@ -452,10 +510,12 @@ class TravelToBehaviour(BehaviourBase):
                         self.status = Status.success
 
     def from_child(self, status, **kwargs):
+        if self.cancelled:
+            return
         if status != Status.success:
             self.ready = False
             self.fail_count += 1
-        if self.fail_count == self.fail_limit:
+        if self.fail_count >= self.fail_limit:
             self.ready = True
             self.status = Status.failure
         else:
@@ -463,6 +523,9 @@ class TravelToBehaviour(BehaviourBase):
 
     @inlineCallbacks
     def _tick(self):
+        if self.cancelled:
+            self.status = Status.failure
+            return
         while not self.ready:
             yield self._prepare()
             self.fail_count += 1
@@ -470,7 +533,8 @@ class TravelToBehaviour(BehaviourBase):
                 self.ready = True
                 self.status = Status.failure
                 return
-        self.fail_count = 0
+        if self.status == Status.failure:
+            return
         self.follow(self.path, self.bot.bot_object)
 
     def follow(self, path, b_obj):
@@ -483,12 +547,25 @@ class TravelToBehaviour(BehaviourBase):
             return
         else:
             current_start = self.bot.standing_on_block(self.bot.bot_object)
-            if current_start is not None:
-                current_bot_coords = current_start.coords
-                self.add_subbehaviour(MoveToBehaviour, start=current_bot_coords, target=step.coords)
-            else:
+            if current_start is None:
+                log.msg("Got 'None' for current bot location, failing..")
                 self.status = Status.failure
                 return
+            if current_start.coords.distance(step.coords) >= 2:
+                log.msg("Path has changed! rerouting..")
+                self.add_subbehaviour(TravelToBehaviour,
+                                      coords=self.travel_coords,
+                                      shorten_path_by=self.shorten_path_by)
+#            if self.recurse:
+#                self.add_subbehaviour(TravelToBehaviour,
+#                                      coords=self.travel_coords,
+#                                      shorten_path_by=0,
+#                                      estimate=True,
+#                                      recurse=False,
+#                                      max_cost=5)
+            self.add_subbehaviour(MoveToBehaviour,
+                                  start=current_start.coords,
+                                  target=step.coords)
 
 
 class MoveToBehaviour(BehaviourBase):
@@ -499,22 +576,33 @@ class MoveToBehaviour(BehaviourBase):
         self.was_at_target = False
         self.hold_position_flag = False
         self.name = 'moving to %s' % str(self.target_coords)
+        self.start_time = time()
+        # If this much time has passed, we failed at moving.
+        self.max_time = config.MAX_SINGLE_MOVE_TIME
 
     def check_status(self, b_obj):
+        if time() - self.start_time >= self.max_time:
+            return Status.failure
         gs = GridSpace(self.world.grid)
         self.start_state = gs.get_state_coords(self.start_coords)
         self.target_state = gs.get_state_coords(self.target_coords)
         go = gs.can_go(self.start_state, self.target_state)
         if not go:
-            log.msg('Cannot go between %s %s' % (self.start_state, self.target_state))
+            log.msg('Cannot go between %s %s' % (self.start_state,
+                                                 self.target_state))
             return Status.failure
         if not self.was_at_target:
-            self.was_at_target = self.target_state.vertical_center_in(b_obj.position)
-        if self.target_state.base_in(b_obj.aabb) and self.target_state.touch_platform(b_obj.position):
+            self.was_at_target = self.target_state.vertical_center_in(
+                                                                b_obj.position)
+        if (self.target_state.base_in(b_obj.aabb)
+          and self.target_state.touch_platform(b_obj.position)):
             return Status.success
         return Status.running
 
     def _tick(self):
+        if self.cancelled:
+            self.status = Status.failure
+            return
         b_obj = self.bot.bot_object
         self.status = self.check_status(b_obj)
         if self.status != Status.running:
@@ -544,7 +632,8 @@ class MoveToBehaviour(BehaviourBase):
             self.move(b_obj)
 
     def move(self, b_obj):
-        direction = utils.Vector2D(self.target_state.center_x - b_obj.x, self.target_state.center_z - b_obj.z)
+        direction = utils.Vector2D(self.target_state.center_x - b_obj.x,
+                                   self.target_state.center_z - b_obj.z)
         direction.normalize()
         if not self.was_at_target:
             self.bot.turn_to_direction(b_obj, direction.x, direction.z)

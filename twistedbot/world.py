@@ -7,11 +7,12 @@ from Queue import Empty, Full
 import logbot
 import utils
 import config
+import entities
 from entities import Entities
 from grid import Grid
 from statistics import Statistics
 from chat import Chat
-from botentity import BotEntity
+from botentity import BotEntity, Bot
 from signwaypoints import SignWayPoints
 
 
@@ -50,9 +51,10 @@ class World(object):
         self.server_port = port
         self.commander = Commander(commander_name)
         # Users who can give the bot non-administrative commands
-        self.managers = {}     # {'name1': eid} (or {'name1': None} if offline)
+        self.managers = set(config.MANAGERS)     # names as given from server
         self.chat = Chat(self)
         self.bot = BotEntity(self, bot_name)
+        self.bot_interface = Bot(self.bot)
         self.stats = Statistics()
         self.game_ticks = 0
         self.connected = False
@@ -118,9 +120,13 @@ class World(object):
         self._to_bot.close()
         self.factory.log_connection_lost = False
 
-    def send_packet(self, name, payload):
+    def send_packet(self, name, *payload, **kwpayload):
+        if payload and not kwpayload:
+            kwpayload = payload[0]
+        elif kwpayload and payload:
+            raise ValueError("Received both payload and kwpayload.")
         if self.protocol is not None:
-            self.protocol.send_packet(name, payload)
+            self.protocol.send_packet(name, kwpayload)
         else:
             log.msg("Trying to send %s while disconnected" % name)
 
@@ -130,8 +136,10 @@ class World(object):
         self.dimension = d
         self.entities, self.grid = d.entities, d.grid
         self.sign_waypoints = d.sign_waypoints
-        if not self.entities.has_entity(self.bot.eid):
-            self.entities.new_bot(self.bot.eid)
+        if self.bot.eid not in self.entities:
+	        # no etype given as EntityBot has no server-side corollary
+			new_bot = entities.EntityBot(eid=self.bot.eid, x=0, y=0, z=0)
+            self.entities[new_bot.eid] = new_bot
 
     def on_login(self, bot_eid=None, game_mode=None, dimension=None,
                  difficulty=None):
