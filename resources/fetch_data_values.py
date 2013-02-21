@@ -9,74 +9,158 @@ from bs4 import BeautifulSoup
 from urllib import urlopen
 from collections import namedtuple
 
-ADDRESS = "http://www.wiki.vg/Entities"
+ITEM_ADDRESS = "http://www.minecraftwiki.net/wiki/Data_values"
+ENTITY_ADDRESS = "http://www.wiki.vg/Entities"
 
 # compared against table.tr.text.split()
-mob_data_identifier = 'Type Name x, z y'.split()
-object_data_identifier = 'Type Name x, z y'.split()
+entity_mob_identifier = 'Type Name x, z y'.split()
+entity_object_identifier = 'Type Name x, z y'.split()
+item_identifier = 'Icon Dec Hex Item'.split()
+item_block_identifier = 'Icon Dec Hex Block type'.split()
 
 
-MobEntityData = namedtuple('MobEntityData', 'number name width height')
-ObjectEntityData = namedtuple('ObjectEntityData', 'number name width height')
+EntityData = namedtuple('EntityData', 'number name width height')
+ItemData = namedtuple('ItemData', 'number name props')
 
 
-def parse_mob_data(table):
-    """parse_mob_data(entity_data_table) -> list of EntityData objects
-    Takes a block data table, returns the entity data from that table as a list
-    of EntityData objects.
-    """
-    result = []
-    for t in table('tr'):
-        if t.text.split() == mob_data_identifier:
-            continue
-        data = t('td')
-        number = int(data[0].text.strip())
-        name = data[1].text.strip()
-        width_text = data[2].text.split(' *')[0].rstrip('?').strip()
-        width = float(width_text) if width_text else None
-        height_text = data[3].text.split(' *')[0].rstrip('?').strip()
-        height = float(height_text) if height_text else None
-        result.append(MobEntityData(number, name, width, height))
-    return result
+def download_soup(url, noisy=True):
+    if noisy:
+        print "Fetching name data.."
+    page_data = urlopen(url).read()
+    if noisy:
+        print "Parsing data.."
+    soup = BeautifulSoup(page_data)
+    return soup
 
 
-def get_mob_data(tables):
-    """Takes a list of tables, returns a list of EntityData objects."""
-    item_tables = [table for table in tables
-                   if table.tr.text.split() == mob_data_identifier]
-    result = []
-    for table in item_tables:
-        result.extend(parse_mob_data(table))
-    return result
+class item_page_handler(object):
+    """Organizational.  Holds methods for grabbing items from the minecraft
+    items page."""
+    def __init__(self, address=ITEM_ADDRESS, noisy=True):
+        self.address = address
+        self.tables = download_soup(address, noisy)('table')
+        self.blocks = self._get_block_data()
+        self.items = self._get_item_data()
+        self.all = self.blocks + self.items
+
+    def _parse_item_block_data(self, table):
+        """parse_block_data(block_data_table) -> list of ItemData objects
+        Takes a block data table, returns the block data from that table as a
+        list of ItemData objects.
+        """
+        result = []
+        for block in table('tr'):
+            if block.text.split() == item_block_identifier:
+                continue
+            data = block('td')
+            number = int(data[1].text)
+            name = data[3].text
+            prop_data = data[3].sup.stripped_strings if data[3].sup else []
+            props = ''.join(prop_data)
+            if props:
+                name = name.rsplit(props, 1)[0].strip()
+            result.append(ItemData(number, name, props))
+        return result
+
+    def _get_block_data(self):
+        """Takes a list of tables, returns a list of item data."""
+        item_tables = [table for table in self.tables
+                       if table.tr.text.split() == item_block_identifier]
+        result = []
+        for table in item_tables:
+            result.extend(self._parse_item_block_data(table))
+        return result
+
+    def _parse_item_data(self, table):
+        """parse_item_data(item_data_table) -> list of ItemData objects
+        Takes an item data table, returns the item data from that table as a
+        list of ItemData objects."""
+        result = []
+        for item in table('tr'):
+            if item.text.split() == item_identifier:
+                continue
+            data = item('td')
+            number = int(data[1].text)
+            name = data[3].text
+            prop_data = data[3].sup.stripped_strings if data[3].sup else []
+            props = ''.join(prop_data)
+            if props:
+                name = name.rsplit(props, 1)[0].strip()
+            result.append(ItemData(number, name, props))
+        return result
+
+    def _get_item_data(self):
+        """Takes a list of tables, returns a list of item data."""
+        item_tables = [table for table in self.tables
+                       if table.tr.text.split() == item_identifier]
+        result = []
+        for table in item_tables:
+            result.extend(self._parse_item_data(table))
+        return result
 
 
-def parse_object_data(table):
-    """parse_object_data(object_data_table) -> list of ItemData objects
-    Takes an item data table, returns the item data from that table as a list
-    of ItemData objects."""
-    result = []
-    for t in table('tr'):
-        if t.text.split() == object_data_identifier:
-            continue
-        data = t('td')
-        number = int(data[0].text.strip())
-        name = data[1].text.strip()
-        width_text = data[2].text.split(' *')[0].rstrip('?').strip()
-        width = float(width_text) if width_text else None
-        height_text = data[3].text.split(' *')[0].rstrip('?').strip()
-        height = float(height_text) if height_text else None
-        result.append(ObjectEntityData(number, name, width, height))
-    return result
+class entity_page_handler(object):
+    def __init__(self, address=ENTITY_ADDRESS, noisy=True):
+        self.address = address
+        self.tables = download_soup(address, noisy)('table')
+        self.mobs = self._get_mob_data()
+        self.objects = self._get_object_data()
+        self.all = self.mobs + self.objects
 
+    def _parse_mob_data(self, table):
+        """parse_mob_entity_data(entity_data_table) -> EntityData objects list
+        Takes a block data table, returns the entity data from that table as a
+        list of EntityData objects.
+        """
+        result = []
+        for t in table('tr'):
+            if t.text.split() == entity_mob_identifier:
+                continue
+            data = t('td')
+            number = int(data[0].text.strip())
+            name = data[1].text.strip()
+            width_text = data[2].text.split(' *')[0].rstrip('?').strip()
+            width = float(width_text) if width_text else None
+            height_text = data[3].text.split(' *')[0].rstrip('?').strip()
+            height = float(height_text) if height_text else None
+            result.append(EntityData(number, name, width, height))
+        return result
 
-def get_object_data(tables):
-    """Takes a list of tables, returns a list of item data."""
-    item_tables = [table for table in tables
-                   if table.tr.text.split() == object_data_identifier]
-    result = []
-    for table in item_tables:
-        result.extend(parse_object_data(table))
-    return result
+    def _get_mob_data(self):
+        """Takes a list of tables, returns a list of EntityData objects."""
+        item_tables = [table for table in self.tables
+                       if table.tr.text.split() == entity_mob_identifier]
+        result = []
+        for table in item_tables:
+            result.extend(self._parse_mob_data(table))
+        return result
+
+    def _parse_object_data(self, table):
+        """_parse_object_data(object_data_table) -> EntityData object list
+        objects Takes an item data table, returns the item data from that table
+        as a list of EntityData objects."""
+        result = []
+        for t in table('tr'):
+            if t.text.split() == entity_object_identifier:
+                continue
+            data = t('td')
+            number = int(data[0].text.strip())
+            name = data[1].text.strip()
+            width_text = data[2].text.split(' *')[0].rstrip('?').strip()
+            width = float(width_text) if width_text else None
+            height_text = data[3].text.split(' *')[0].rstrip('?').strip()
+            height = float(height_text) if height_text else None
+            result.append(EntityData(number, name, width, height))
+        return result
+
+    def _get_object_data(self):
+        """Takes a list of tables, returns a list of item data."""
+        item_tables = [table for table in self.tables
+                       if table.tr.text.split() == entity_object_identifier]
+        result = []
+        for table in item_tables:
+            result.extend(self._parse_object_data(table))
+        return result
 
 
 def update_data(filename, noisy=True, fmt='json'):
@@ -86,9 +170,12 @@ def update_data(filename, noisy=True, fmt='json'):
     repr will write an 'eval'able item, and python will write an importable
     module.
     """
-    mobs, objects = fetch_data(noisy=noisy)
-    data = {'mobs': [dict(i.__dict__) for i in mobs],
-            'objects': [dict(i.__dict__) for i in objects]}
+    items, ents = fetch_data(noisy=noisy)
+    data = {'block_items': [dict(i.__dict__) for i in items.blocks],
+            'nonblock_items': [dict(i.__dict__) for i in items.items],
+            'mob_entities': [dict(i.__dict__) for i in ents.mobs],
+            'object_entities': [dict(i.__dict__) for i in ents.objects],
+            }
     if fmt == 'pickle':
         with open(filename, 'wb') as f:
             try:
@@ -96,7 +183,6 @@ def update_data(filename, noisy=True, fmt='json'):
             except ImportError:
                 import pickle
             p = pickle.Pickler(f)
-            data = {'mobs': mobs, 'objects': objects}
             p.dump(data)
     elif fmt == 'json':
         import json
@@ -112,13 +198,15 @@ def update_data(filename, noisy=True, fmt='json'):
         f.write("\n")
         f.write("# autogenerated file\n\n")
         f.write("from collections import namedtuple\n")
-        m = ("MobEntityData = namedtuple('MobEntityData',"
+        i = ("ItemData = namedtuple('EntityData',"
+             " 'number name props')")
+        e = ("EntityData = namedtuple('EntityData',"
              " 'number name width height')")
-        o = ("ObjectEntityData = namedtuple('ObjectEntityData', "
-             "'number name width height')")
-        f.write("%s\n%s\n\n" % (m, o))
-        f.write("mobs = %s\n" % pformat(mobs, indent=4))
-        f.write("objects = %s\n" % pformat(objects, indent=4))
+        f.write("%s\n%s\n\n" % (i, e))
+        f.write("block_items = %s\n" % pformat(items.blocks, indent=4))
+        f.write("nonblock_items = %s\n" % pformat(items.items, indent=4))
+        f.write("mob_entities = %s\n" % pformat(ents.mobs, indent=4))
+        f.write("object_entities = %s\n" % pformat(ents.objects, indent=4))
         f.close()
     else:
         raise ValueError("Unrecognized format: " + fmt)
@@ -126,21 +214,11 @@ def update_data(filename, noisy=True, fmt='json'):
         print "Fetch complete."
 
 
-def download_soup(url, noisy=True):
-    if noisy:
-        print "Fetching name data.."
-    page_data = urlopen(url).read()
-    if noisy:
-        print "Parsing data.."
-    soup = BeautifulSoup(page_data)
-    return soup
-
-
 def fetch_data(noisy=True):
-    tables = download_soup(ADDRESS)('table')
-    mob_data = get_mob_data(tables)
-    object_data = get_object_data(tables)
-    return mob_data, object_data
+    """fetch_data() -> ([blocks], [items], [mobs], [objects])"""
+    items = item_page_handler(noisy=noisy)
+    ents = entity_page_handler(noisy=noisy)
+    return items, ents
 
 
 def main():

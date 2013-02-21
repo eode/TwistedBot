@@ -15,8 +15,8 @@ class Inventory(object):
 
 
 class Entity(object):
-    names = dict((e.number, e) for e in namedata.mobs)
-    names.update(dict((e.number, e) for e in namedata.objects))
+    names = dict((e.number, e) for e in namedata.mob_entities)
+    names.update(dict((e.number, e) for e in namedata.object_entities))
     world = None  # set on initialization of an 'Entities' instance
 
     def __init__(self, **kwargs):
