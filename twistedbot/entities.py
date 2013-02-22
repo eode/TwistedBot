@@ -38,13 +38,11 @@ class Entity(object):
     def __init__(self, **kwargs):
         """Entity(eid=eid, etype=etype, x=x, y=y, z=z) -> Entity"""
         self.eid = kwargs["eid"]
-        self.etype = kwargs['etype']
         self.x = kwargs["x"]
         self.y = kwargs["y"]
         self.z = kwargs["z"]
         self.velocity = None
-        if self.etype >= 0:
-            log.msg(str(self))
+        log.msg(str(self))
 
     equipment = property(lambda s: s._inv if hasattr(s, '_inv') else False,
                          lambda s, v: setattr(s, '_inv', v))
@@ -101,7 +99,8 @@ class EntityBot(Entity):
         at all, unless we mirror the entity api to in some way or other affect
         the player..?
         """
-        super(EntityBot, self).__init__(etype=-1, **kwargs)
+        self.etype = -1
+        super(EntityBot, self).__init__(**kwargs)
         self.is_bot = True
         log.msg(str(self))
 
@@ -125,6 +124,7 @@ class EntityLiving(Entity):
 class EntityMob(EntityLiving):
     names = dict((e.number, e) for e in namedata.mob_entities)
     def __init__(self, **kwargs):
+        # This must come before class init, or log message will fail.
         self.etype = kwargs['etype']
         super(EntityMob, self).__init__(**kwargs)
         self.head_yaw = kwargs["yaw"]
@@ -135,9 +135,13 @@ class EntityMob(EntityLiving):
 class EntityPlayer(EntityLiving):
     last_known_position = {}
     def __init__(self, **kwargs):
-        super(EntityPlayer, self).__init__(etype=-2, **kwargs)
-        self.world = kwargs["world"]
+        # this is sorta bad form, but creation of 'username' must come before
+        # superclass initialization calls, to allow the 'name' property to
+        # function properly.
         self.username = kwargs["username"]
+        self.etype = -3
+        super(EntityPlayer, self).__init__(**kwargs)
+        self.world = kwargs["world"]
         self.held_item = kwargs["held_item"]
         # Player's looking direction
         self.yaw = kwargs["yaw"]
@@ -189,8 +193,8 @@ class EntityPlayer(EntityLiving):
 
 class EntityVehicle(Entity):
     def __init__(self, **kwargs):
-        super(EntityVehicle, self).__init__(**kwargs)
         self.etype = kwargs["etype"]
+        super(EntityVehicle, self).__init__(**kwargs)
         self.thrower = kwargs["object_data"]
         if self.thrower > 0:
             self.vel_x = kwargs["velocity"]["x"]
@@ -201,7 +205,8 @@ class EntityVehicle(Entity):
 
 class EntityExperienceOrb(Entity):
     def __init__(self, **kwargs):
-        super(EntityExperienceOrb, self).__init__(etype=-3, **kwargs)
+        self.etype = -3
+        super(EntityExperienceOrb, self).__init__(**kwargs)
         self.quantity = kwargs["count"]
 
 
