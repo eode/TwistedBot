@@ -8,15 +8,31 @@ import config
 
 log = logbot.getlogger("ENTITIES")
 
+# These aren't sent by the server, but are determined locally.
+# It's mostly a means of assigning a name and info which is consistent with the
+# existing structure.
+ADDITIONAL_ETYPES = [
+    namedata.EntityData(number=-1, name="Myself (%s)" % config.USERNAME,
+                        width=config.PLAYER_DIAMETER,
+                        height=config.PLAYER_HEIGHT),
+    namedata.EntityData(number=-2, name="Player",
+                        width=config.PLAYER_DIAMETER,
+                        height=config.PLAYER_HEIGHT),
+    namedata.EntityData(number=-3, name="Experience Orb",
+                        width=0.1, height=0.1),
+#    -1: namedata.EntityData(number=, name=, width=, height=),
+    ]
 
-class Inventory(object):
+
+class equipment(object):
     def __init__(self, container):
         self.c = container
 
-
+#TODO: keep original Container object, and just reference it w/properties
 class Entity(object):
-    names = dict((e.number, e) for e in namedata.mob_entities)
-    names.update(dict((e.number, e) for e in namedata.object_entities))
+    names = dict((e.number, e) for e in namedata.object_entities)
+    # ADDITIONAL_ETYPES are defined purely internally.
+    names.update(dict((e.number, e) for e in ADDITIONAL_ETYPES))
     world = None  # set on initialization of an 'Entities' instance
 
     def __init__(self, **kwargs):
@@ -30,14 +46,14 @@ class Entity(object):
         if self.etype >= 0:
             log.msg(str(self))
 
-    inventory = property(lambda s: s._inv if hasattr(s, '_inv') else False,
+    equipment = property(lambda s: s._inv if hasattr(s, '_inv') else False,
                          lambda s, v: setattr(s, '_inv', v))
 
     is_bot = property(lambda s: s._bot if hasattr(s, '_bot') else False,
                       lambda s, v: setattr(s, '_bot', v))
 
     is_manager = property(lambda s: s._mgr if hasattr(s, '_mgr') else False,
-                      lambda s, v: setattr(s, '_mgr', v))
+                          lambda s, v: setattr(s, '_mgr', v))
 
     is_commander = property(lambda s: s._cmd if hasattr(s, '_cmd') else False,
                             lambda s, v: setattr(s, '_cmd', v))
@@ -50,13 +66,7 @@ class Entity(object):
         try:
             name = self.names[self.etype].name
         except KeyError:
-            if self.etype == -1:
-                name = 'Myself (%s)' % config.USERNAME
-            elif hasattr(self, 'username'):
-                # this must be set
-                name =  "Player '%s'" % self.username
-            else:
-                name = "Unknown Entity Type ({})".format(self.etype)
+            name = "Unknown Entity Type ({})".format(self.etype)
         return name
 
     @property
@@ -75,8 +85,9 @@ class Entity(object):
         return self.position.distance(other.position)
 
     def __str__(self):
-        inventory = ', ' + str(self.inventory) if self.inventory else ''
-        return "{} at {}{}".format(self.name, self.position, inventory)
+        equipment = ', ' + str(self.equipment) if self.equipment else ''
+        equipment = ', with ' + equipment if equipment else equipment
+        return "{} at {}{}".format(self.name, self.position, equipment)
 
 
 class EntityBot(Entity):
@@ -112,7 +123,9 @@ class EntityLiving(Entity):
 
 
 class EntityMob(EntityLiving):
+    names = dict((e.number, e) for e in namedata.mob_entities)
     def __init__(self, **kwargs):
+        self.etype = kwargs['etype']
         super(EntityMob, self).__init__(**kwargs)
         self.head_yaw = kwargs["yaw"]
         self.status = None
@@ -166,6 +179,9 @@ class EntityPlayer(EntityLiving):
         else:
             log.msg("Player '%s' logged off." % self.username)
 
+    def _name(self):
+        return 'Player "%s"' % self.username
+
     is_manager = property(lambda s: s.username in s.world.managers)
 
     is_commander = property(lambda s: s.username == s.world.commander.name)
@@ -185,7 +201,7 @@ class EntityVehicle(Entity):
 
 class EntityExperienceOrb(Entity):
     def __init__(self, **kwargs):
-        super(EntityExperienceOrb, self).__init__(**kwargs)
+        super(EntityExperienceOrb, self).__init__(etype=-3, **kwargs)
         self.quantity = kwargs["count"]
 
 
