@@ -14,7 +14,7 @@ ENTITY_ADDRESS = "http://www.wiki.vg/Entities"
 
 # compared against table.tr.text.split()
 entity_mob_identifier = 'Type Name x, z y'.split()
-entity_object_identifier = 'Type Name x, z y'.split()
+entity_object_identifier = 'ID Name x, z y'.split()
 item_identifier = 'Icon Dec Hex Item'.split()
 item_block_identifier = 'Icon Dec Hex Block type'.split()
 
@@ -146,9 +146,9 @@ class entity_page_handler(object):
             data = t('td')
             number = int(data[0].text.strip())
             name = data[1].text.strip()
-            width_text = data[2].text.split(' *')[0].rstrip('?').strip()
+            width_text = data[2].text.split(' *')[0].strip().rstrip('?')
             width = float(width_text) if width_text else None
-            height_text = data[3].text.split(' *')[0].rstrip('?').strip()
+            height_text = data[3].text.split(' *')[0].strip().rstrip('?')
             height = float(height_text) if height_text else None
             result.append(EntityData(number, name, width, height))
         return result
