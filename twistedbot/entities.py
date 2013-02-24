@@ -24,7 +24,7 @@ ADDITIONAL_ETYPES = [
     ]
 
 
-class equipment(object):
+class Equipment(object):
     def __init__(self, container):
         self.c = container
 
@@ -42,7 +42,7 @@ class Entity(object):
         self.y = kwargs["y"]
         self.z = kwargs["z"]
         self.velocity = None
-        log.msg(str(self))
+        #log.msg(str(self))
 
     equipment = property(lambda s: s._inv if hasattr(s, '_inv') else False,
                          lambda s, v: setattr(s, '_inv', v))

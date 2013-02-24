@@ -12,6 +12,11 @@ log = logbot.getlogger("ASTAR")
 
 
 class PathNode(object):
+    """Node on an astar path.  Be careful that you understand what the
+    different operators do before using them -- namely:
+        == compares coordinates
+        <  compares f-score
+    """
     __slots__ = ['coords', 'g', 'h', 'parent']
     def __init__(self, coords, parent=None):
         self.coords = coords
@@ -30,6 +35,18 @@ class PathNode(object):
 
     def __eq__(self, other):
         return self.coords == other.coords
+
+    def __ne__(self, other):
+        raise NotImplementedError()
+
+    def __gt__(self, o):
+        raise NotImplementedError()
+
+    def __ge__(self, o):
+        raise NotImplementedError()
+
+    def __le__(self, o):
+        raise NotImplementedError()
 
     def __hash__(self):
         return self.hash
@@ -70,15 +87,17 @@ class PathNode(object):
 
 
 class Path(object):
-    __slots__ = ['dimension', 'nodes', 'start_aabb',
-                 'node_step', 'is_finished']
-
-    def __init__(self, dimension=None, nodes=None, start_aabb=None):
+    """Result path from an astar calculation.
+    If the path was estimated, the a* algorithm should set 'estimated' to True.
+    """
+    def __init__(self, dimension=None, nodes=None, start_aabb=None,
+                 estimated=False):
         self.dimension = dimension
         self.nodes = nodes
         self.start_aabb = start_aabb
         self.node_step = 0
         self.is_finished = False
+        self.estimated = False
 
     def __str__(self):
         nodes = '\n\t'.join([str(n) for n in self.nodes])
@@ -106,12 +125,10 @@ class Path(object):
 
 
 class AStar(object):
-#TODO: change 'use_best' to 'estimate' for consistency with behaviours module
-#TODO: (in behaviours) set recursive call of astar to not estimate
 #TODO: explore limiting by execution time rather than by path distance
 
     def __init__(self, dimension=None, start_coords=None, end_coords=None,
-                 path_max=config.PATHFIND_MAX, use_best=True):
+                 path_max=config.PATHFIND_MAX, estimate=True):
         self.t_start = time.time()
         self.dimension = dimension
         self.grid = dimension.grid
@@ -119,12 +136,13 @@ class AStar(object):
         self.goal_node = PathNode(end_coords)
         self.gridspace = GridSpace(self.grid)
         # keep max_cost between the configured values
-        values = [config.PATHFIND_MAX, path_max, config.PATHFIND_MIN]
+        conf_max, conf_min = config.PATHFIND_MAX, config.PATHFIND_MIN
+        values = [conf_min, path_max, conf_max]
         self.max_cost = list(sorted(values))[1]
         self.path = None
         self.closed_set = set()
         goal_state = self.gridspace.get_state_coords(end_coords)
-        if goal_state.can_stand or goal_state.can_hold or use_best:
+        if goal_state.can_stand or goal_state.can_hold or estimate:
             self.open_heap = [self.start_node]
             self.open_set = set([self.start_node])
         else:
@@ -134,10 +152,11 @@ class AStar(object):
                                               self.start_node, self.goal_node))
         self.iter_count = 0
         self.best = self.start_node
-        self.use_best = use_best
+        self.estimate = estimate
+        self.excessive = config.PATHFIND_EXEC_TIME_LIMIT
 
         self.distance = self.start_node.coords.distance(self.goal_node.coords)
-        self.excessive = 2.5
+        self.start = time.time()
 
     def get_edge_cost(self, node_from, node_to,
                       x_neighbors=None, y_neighbors=None):
@@ -173,38 +192,46 @@ class AStar(object):
     def _excessive_path(self, start):
         """Cheap evalutation of whether this path is excessive, only usable on
         a scored node."""
-        excessive = start.step > self.distance * self.excessive
-        if excessive:
-            debug and log.msg(msg % (start.h, start.g))
-        return excessive
+        # Pathfinding is the most expensive operation in a tick.
+        # self.excessive should ideally be less than 1/20th of a second, but
+        # can realistically go higher.
+        # this means the pathfinding effectiveness of the bot is affected by
+        # the speed of the machine it's on -- and by it's cost.
+        return time.time() - self.start > self.excessive
+#        excessive = start.step > self.distance * self.excessive
+#        if excessive:
+#            debug and log.msg(msg % (start.h, start.g))
+#        return excessive
 
     def report(self):
         nodes = ''
         if not self.path:
             path = '<PATH NOT FOUND>'
         else:
-            estimated = '' if self.best == self.goal_node else "(estimated)"
+            estimated = '' if self.path.estimated else "(estimated)"
             path = 'path length %s %s' % (self.best.step, estimated)
             nodes = 'Nodes: %s' % self.path.nodes
         msg = "Finished in %s sec, %s iterations, %s"
         log.msg(msg % (time.time() - self.t_start, self.iter_count, path))
         debug and log.msg(nodes)
 
+    def finish(self):
+        estimated = self.best.coords != self.goal_node.coords
+        if not estimated or (estimated and self.estimate):
+            self.path = Path(dimension=self.dimension,
+                             nodes=self.best.path, estimated=estimated)
+        self.gridspace = None
+        self.report()
+
     def next(self):
         self.iter_count += 1
         if not self.open_set:
-            if self.use_best:
-                self.path = Path(dimension=self.dimension,
-                                 nodes=self.best.path)
-            self.report()
-            self.gridspace = None
+            self.finish()
             raise StopIteration()
         x = heapq.heappop(self.open_heap)
-        if x == self.goal_node:
+        if x.coords == self.goal_node.coords:
             self.best = x
-            self.path = Path(dimension=self.dimension, nodes=x.path)
-            self.gridspace = None
-            self.report()
+            self.finish()
             raise StopIteration()
         self.open_set.remove(x)
         self.closed_set.add(x.coords)
@@ -222,13 +249,16 @@ class AStar(object):
                 if y not in self.open_set:
                     heapq.heappush(self.open_heap, y)
                     self.open_set.add(y)
-                if y.step > self.max_cost or self._excessive_path(y):
-                    if self.use_best:
-                        self.path = Path(dimension=self.dimension,
-                                         nodes=self.best.path)
-                        self.gridspace = None
-                        self.report()
-                        raise StopIteration()
-                    log.err("Finding path over limit between %s and %s" % (self.start_node.coords, self.goal_node.coords))
+                if self._excessive_path(y):
+                    msg = "Find path timed out at %s steps between %s and %s"
+                    log.msg(msg % (y.step, self.start_node.coords,
+                                   self.goal_node.coords))
+                    self.finish()
+                    raise StopIteration()
+                if y.step > self.max_cost:
+                    msg = "Find path over limit %s between %s and %s"
+                    log.msg(msg % (self.max_cost, self.start_node.coords,
+                                   self.goal_node.coords))
+                    self.finish()
                     raise StopIteration()
 

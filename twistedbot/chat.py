@@ -41,6 +41,7 @@ class Chat(object):
 
     def send_message(self, msg, who=config.COMMANDER):
         self.chat_spam_threshold_buffer.append((msg, who))
+        self.tick()  # Run a tick now, to keep log messages in order
 
     def _send_message(self, msg, who):
         self.chat_spam_threshold_count += self.message_cost

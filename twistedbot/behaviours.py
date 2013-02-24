@@ -18,8 +18,10 @@ log = logbot.getlogger("BEHAVIOUR_TREE")
 
 
 class Status(object):
-    names = {20: 'success', 30: 'failure', 40: 'running', 50: 'suspended'}
+    names = {20: 'success', 25: 'partial success', 30: 'failure',
+             40: 'running', 50: 'suspended'}
     success = 20
+    partial_success = 25
     failure = 30
     running = 40
     suspended = 50
@@ -374,21 +376,24 @@ class GoToSignBehaviour(BehaviourBase):
         self.status = status
 
     def _tick(self):
-        if self.cancelled:
+        waypoints = self.world.sign_waypoints
+        if self.cancelled or self.status == Status.failure:
             self.status = Status.failure
             return
-        self.signpoint = self.world.sign_waypoints.get_namepoint(self.sign_name)
+        self.signpoint = waypoints.get_namepoint(self.sign_name)
         if self.signpoint is None:
-            self.signpoint = self.world.sign_waypoints.get_name_from_group(self.sign_name)
+            self.signpoint = waypoints.get_name_from_group(self.sign_name)
         if self.signpoint is None:
-            self.world.chat.send_message("cannot idetify sign with name %s" % self.sign_name)
+            msg = "cannot identify sign with name %s"
+            self.world.chat.send_message(msg % self.sign_name)
             self.status = Status.failure
             return
-        if not self.world.sign_waypoints.check_sign(self.signpoint):
+        if not waypoints.check_sign(self.signpoint):
             self.status = Status.failure
             return
         log.msg("Go To: sign details %s" % self.signpoint)
-        self.add_subbehaviour(TravelToBehaviour, coords=self.signpoint.coords)
+        self.add_subbehaviour(TravelToBehaviour, coords=self.signpoint.coords,
+                              recurse=False, estimate=False)
 
 
 class FollowPlayerBehaviour(BehaviourBase):
@@ -465,16 +470,16 @@ class TravelToBehaviour(BehaviourBase):
     """
     def __init__(self, *args, **kwargs):
         super(TravelToBehaviour, self).__init__(*args, **kwargs)
+        # used when travel_coords is set, so this line must go before that.
+        self.recurse = kwargs.get('recurse', True)
         self.travel_coords = kwargs["coords"]
         self.shorten_path_by = kwargs.get("shorten_path_by", 0)
+        self.estimate = kwargs.get('estimate', True)
         self.ready = False
-        log.msg(self.name)
-        self.fail_count = 0
-        self.fail_limit = 5
         self.start_time = time()
-        f = kwargs.get('check_status_method')
-        self.check_status = f if f else lambda: True
-        self.recurse = kwargs.get('recurse', False)
+        self.fail_count = 0
+        self.fail_limit = config.PATHFIND_MIN * 1.5 if self.recurse else 4
+        #log.msg(self.name)
 
     @property
     def travel_coords(self):
@@ -483,9 +488,10 @@ class TravelToBehaviour(BehaviourBase):
     @travel_coords.setter
     def travel_coords(self, value):
         self._travel_coords = value
-        name = 'traveling from %s to %s'
+        name = 'traveling from %s to %s %s'
         self.name = name % (self.bot.standing_on_block(self.bot.bot_object),
-                            self.world.grid.get_block_coords(value))
+                            self.world.grid.get_block_coords(value),
+                            '(parent)' if self.recurse else '')
 
     @inlineCallbacks
     def _prepare(self):
@@ -495,7 +501,8 @@ class TravelToBehaviour(BehaviourBase):
         else:
             d = cooperate(AStar(dimension=self.world.dimension,
                                 start_coords=sb.coords,
-                                end_coords=self.travel_coords)).whenDone()
+                                end_coords=self.travel_coords,
+                                estimate=self.estimate)).whenDone()
             d.addErrback(logbot.exit_on_error)
             astar = yield d
             if astar is None or astar.path is None:
@@ -506,17 +513,37 @@ class TravelToBehaviour(BehaviourBase):
                     self.path = astar.path
                     self.path.remove_last(self.shorten_path_by)
                     self.ready = True
-                    if len(astar.path) < 2:
+                    if len(astar.path) <= self.shorten_path_by + 0.5:
                         self.status = Status.success
 
-    def from_child(self, status, **kwargs):
+    def from_child(self, status, no_op=None, **kwargs):
         if self.cancelled:
             return
+        # When recursing, we can treat failures almost as if they were
+        # successes -- the path we actually want will advance, and the
+        # child will pathfind to the next node on our path.
+        if self.recurse:
+            if status == Status.failure:
+                self.fail_count += 1
+                if self.fail_count >= self.fail_limit:
+                    self.status = Status.failure
+                    return
+                self.status = Status.running
+                return
+            elif status == Status.success:
+                self.fail_count = 0
+                self.status == Status.running
+            self.status == status
+        # When not recursing, our child is a MoveToBehaviour.  Anything but
+        # success means it failed, and we should recalculate our path.
         if status != Status.success:
             self.ready = False
             self.fail_count += 1
+        else:
+            # When a child returns 'no_op = True' in its 'to_parent' attr,
+            # we shouldn't count it as a successful move.
+            self.fail_count = 0 if not no_op else self.fail_count
         if self.fail_count >= self.fail_limit:
-            self.ready = True
             self.status = Status.failure
         else:
             self.status = Status.running
@@ -525,6 +552,7 @@ class TravelToBehaviour(BehaviourBase):
     def _tick(self):
         if self.cancelled:
             self.status = Status.failure
+        if self.status == Status.failure:
             return
         while not self.ready:
             yield self._prepare()
@@ -535,11 +563,16 @@ class TravelToBehaviour(BehaviourBase):
                 return
         if self.status == Status.failure:
             return
-        self.follow(self.path, self.bot.bot_object)
+        self.follow(self.path)
 
-    def follow(self, path, b_obj):
+    def follow(self, path):
+        b_obj = self.bot.bot_object
         if path.is_finished:
-            self.status = Status.success
+            if path.estimated:
+                self.to_parent['estimated'] = True
+                self.status = Status.partial_success
+            else:
+                self.status = Status.success
             return
         step = path.take_step()
         if step is None:
@@ -551,21 +584,23 @@ class TravelToBehaviour(BehaviourBase):
                 log.msg("Got 'None' for current bot location, failing..")
                 self.status = Status.failure
                 return
-            if current_start.coords.distance(step.coords) >= 2:
-                log.msg("Path has changed! rerouting..")
-                self.add_subbehaviour(TravelToBehaviour,
-                                      coords=self.travel_coords,
-                                      shorten_path_by=self.shorten_path_by)
-#            if self.recurse:
+# path changes now handled by recursion -- this *should* be unecessary now..
+#            if current_start.coords.distance(step.coords) >= 2:
+#                log.msg("Path has changed! rerouting..")
 #                self.add_subbehaviour(TravelToBehaviour,
 #                                      coords=self.travel_coords,
-#                                      shorten_path_by=0,
-#                                      estimate=True,
-#                                      recurse=False,
-#                                      max_cost=5)
-            self.add_subbehaviour(MoveToBehaviour,
-                                  start=current_start.coords,
-                                  target=step.coords)
+#                                      shorten_path_by=self.shorten_path_by)
+            if self.recurse:
+                self.add_subbehaviour(TravelToBehaviour,
+                                      coords=step.coords,
+                                      shorten_path_by=0,
+                                      estimate=False,
+                                      recurse=False,
+                                      max_cost=config.PATHFIND_MIN)
+            else:
+                self.add_subbehaviour(MoveToBehaviour,
+                                      start=current_start.coords,
+                                      target=step.coords)
 
 
 class MoveToBehaviour(BehaviourBase):
@@ -573,6 +608,7 @@ class MoveToBehaviour(BehaviourBase):
         super(MoveToBehaviour, self).__init__(*args, **kwargs)
         self.target_coords = kwargs["target"]
         self.start_coords = kwargs["start"]
+        self.to_parent['no_op'] = self.start_coords == self.target_coords
         self.was_at_target = False
         self.hold_position_flag = False
         self.name = 'moving to %s' % str(self.target_coords)
@@ -588,8 +624,8 @@ class MoveToBehaviour(BehaviourBase):
         self.target_state = gs.get_state_coords(self.target_coords)
         go = gs.can_go(self.start_state, self.target_state)
         if not go:
-            log.msg('Cannot go between %s %s' % (self.start_state,
-                                                 self.target_state))
+            log.msg('Cannot go between %s and %s' % (self.start_state,
+                                                     self.target_state))
             return Status.failure
         if not self.was_at_target:
             self.was_at_target = self.target_state.vertical_center_in(

@@ -159,6 +159,21 @@ class Vector(object):
     def __eq__(self, o):
         return self.x == o.x and self.y == o.y and self.z == o.z
 
+    def __ne__(self, o):
+        return self.x != o.x or self.y != o.y or self.z != o.z
+
+    def __gt__(self, o):
+        raise NotImplementedError()
+
+    def __lt__(self, o):
+        raise NotImplementedError()
+
+    def __ge__(self, o):
+        raise NotImplementedError()
+
+    def __le__(self, o):
+        raise NotImplementedError()
+
     def __add__(self, v):
         return Vector(self.x + v.x, self.y + v.y, self.z + v.z)
 

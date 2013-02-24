@@ -14,7 +14,7 @@ from proxy_processors.default import process_packets as packet_printout
 proxy_processors.default.ignore_packets = []
 proxy_processors.default.filter_packets = []
 
-log = logbot.getlogger("PROTOCOL")
+log = logbot.getlogger("FACTORY")
 
 # Packet debugging enabled by default if debugging is on.
 log_packet_types = dict([(x, False) for x in xrange(256)])
@@ -174,7 +174,9 @@ class MineCraftProtocol(Protocol):
         self.world.on_time_update(**c)
 
     def p_entity_equipment(self, c):
-        log.msg("entity_equipment packet received:\n"+ str(c))
+        if not hasattr(self, 'p_entity_equipment_warned'):
+            self.p_entity_equipment_warned = None
+            log.msg("entity_equipment packets need processing:\n"+ str(c))
 
     def p_spawn(self, c):
         log.msg("SPAWN POSITION %s %s %s" % (c.x, c.y, c.z))
