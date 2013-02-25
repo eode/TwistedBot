@@ -6,7 +6,18 @@ from twistedbot import logbot
 log = logbot.getlogger("DEBUG PLUGIN")
 
 
-def neighbors(speaker, verb, data,  context):
+def eid(speaker, verb, data, context):
+    wfc = context['world'], context['factory'], context['chat']
+    world, factory, chat = wfc
+    try:
+        eid = int(data.strip())
+    except ValueError:
+        chat.send_message("Expected a number, but got '%s' instead." % data)
+        return
+    chat.send_message(str(world.entities.get(eid, None)))
+
+
+def neighbors(speaker, verb, data, context):
     """Reports traversible neighbors of a coordinate."""
     wfc = context['world'], context['factory'], context['chat']
     world, factory, chat = wfc
@@ -22,4 +33,7 @@ def neighbors(speaker, verb, data,  context):
 class PluginBehaviour(BehaviourBase):
     pass
 
-verbs = {"neighbors": neighbors}
+verbs = {
+    "eid": eid,
+    "neighbors": neighbors,
+    }
