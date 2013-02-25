@@ -6,6 +6,7 @@ from utils import Vector
 from resources import namedata
 import config
 
+
 log = logbot.getlogger("ENTITIES")
 
 # These aren't sent by the server, but are determined locally.
@@ -20,15 +21,10 @@ ADDITIONAL_ETYPES = [
                         height=config.PLAYER_HEIGHT),
     namedata.EntityData(number=-3, name="Experience Orb",
                         width=0.1, height=0.1),
-#    -1: namedata.EntityData(number=, name=, width=, height=),
+    #namedata.EntityData(number=, name=, width=, height=),
     ]
 
 
-class Equipment(object):
-    def __init__(self, container):
-        self.c = container
-
-#TODO: keep original Container object, and just reference it w/properties
 class Entity(object):
     names = dict((e.number, e) for e in namedata.object_entities)
     # ADDITIONAL_ETYPES are defined purely internally.
@@ -44,7 +40,7 @@ class Entity(object):
         self.velocity = None
         #log.msg(str(self))
 
-    equipment = property(lambda s: s._inv if hasattr(s, '_inv') else False,
+    equipment = property(lambda s: s._inv if hasattr(s, '_inv') else None,
                          lambda s, v: setattr(s, '_inv', v))
 
     is_bot = property(lambda s: s._bot if hasattr(s, '_bot') else False,
@@ -83,8 +79,7 @@ class Entity(object):
         return self.position.distance(other.position)
 
     def __str__(self):
-        equipment = ', ' + str(self.equipment) if self.equipment else ''
-        equipment = ', with ' + equipment if equipment else equipment
+        equipment = ', with: ' + str(self.equipment) if self.equipment else ''
         return "{} at {}{}".format(self.name, self.position, equipment)
 
 

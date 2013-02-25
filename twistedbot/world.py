@@ -8,6 +8,8 @@ import logbot
 import utils
 import config
 import entities
+import inventory
+from items import Item
 from entities import Entities
 from grid import Grid
 from statistics import Statistics
@@ -140,6 +142,17 @@ class World(object):
             # no etype given as EntityBot has no server-side corollary
             new_bot = entities.EntityBot(eid=self.bot.eid, x=0, y=0, z=0)
             self.entities[new_bot.eid] = new_bot
+
+    def on_entity_equipment(self, slot, slotdata, eid):
+        entity = self.entities.get(eid, None)
+        if entity is None:
+            msg = "Equipment for unkown entity %s, slot %s:  %s"
+            log.msg((msg % eid, slot, Item(slotdata)))
+            return
+        if entity.equipment is None:
+            entity.equipment = inventory.InventoryEntityEquipment()
+        entity.equipment[slot] = Item(**slotdata)
+        log.msg("temp " + str(entity))
 
     def on_login(self, bot_eid=None, game_mode=None, dimension=None,
                  difficulty=None):

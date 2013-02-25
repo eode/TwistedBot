@@ -24,6 +24,7 @@ enabled_packets = []
 for pack in enabled_packets:
     log_packet_types[pack] = True
 
+
 class MineCraftProtocol(Protocol):
     def __init__(self, world):
         self.world = world
@@ -157,14 +158,16 @@ class MineCraftProtocol(Protocol):
     def p_login(self, c):
         msg = ("LOGIN DATA eid %s level type: %s, game_mode: %s, "
                "dimension: %s, difficulty: %s, max players: %s")
-        log.msg( msg % (c.eid, c.level_type, c.game_mode, c.dimension,
+        log.msg(msg % (c.eid, c.level_type, c.game_mode, c.dimension,
                         c.difficulty, c.players))
-        self.world.on_login(bot_eid=c.eid, game_mode=c.game_mode, dimension=c.dimension, difficulty=c.difficulty)
-        utils.do_now(self.send_packet, "locale view distance", {'locale': 'en_GB',
-                                                                'view_distance': 2,
-                                                                'chat_flags': 0,
-                                                                'difficulty': 0,
-                                                                'show_cape': False})
+        self.world.on_login(bot_eid=c.eid, game_mode=c.game_mode,
+                            dimension=c.dimension, difficulty=c.difficulty)
+        locale_data = {'locale': 'en_GB',
+                       'view_distance': 2,
+                       'chat_flags': 0,
+                       'difficulty': 0,
+                       'show_cape': False}
+        utils.do_now(self.send_packet, "locale view distance", locale_data)
 
     def p_chat(self, c):
         self.world.chat.on_chat_message(c.message)
@@ -174,9 +177,7 @@ class MineCraftProtocol(Protocol):
         self.world.on_time_update(**c)
 
     def p_entity_equipment(self, c):
-        if not hasattr(self, 'p_entity_equipment_warned'):
-            self.p_entity_equipment_warned = None
-            log.msg("entity_equipment packets need processing:\n"+ str(c))
+        self.world.on_entity_equipment(**c)
 
     def p_spawn(self, c):
         log.msg("SPAWN POSITION %s %s %s" % (c.x, c.y, c.z))
@@ -210,7 +211,7 @@ class MineCraftProtocol(Protocol):
                                         "pitch": c.orientation.pitch})
 
     def p_held_item_change(self, c):
-        #TODO ignore for now
+#TODO This (held_item_change)!!
         pass
 
     def p_use_bed(self, c):
