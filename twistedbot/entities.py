@@ -3,23 +3,65 @@
 import logbot
 from axisbox import AABB
 from utils import Vector
+from resources import namedata
+import config
 
 
 log = logbot.getlogger("ENTITIES")
 
+# These aren't sent by the server, but are determined locally.
+# It's mostly a means of assigning a name and info which is consistent with the
+# existing structure.
+ADDITIONAL_ETYPES = [
+    namedata.EntityData(number=-1, name="Myself (%s)" % config.USERNAME,
+                        width=config.PLAYER_DIAMETER,
+                        height=config.PLAYER_HEIGHT),
+    namedata.EntityData(number=-2, name="Player",
+                        width=config.PLAYER_DIAMETER,
+                        height=config.PLAYER_HEIGHT),
+    namedata.EntityData(number=-3, name="Experience Orb",
+                        width=0.1, height=0.1),
+    #namedata.EntityData(number=, name=, width=, height=),
+    ]
+
 
 class Entity(object):
+    names = dict((e.number, e) for e in namedata.object_entities)
+    # ADDITIONAL_ETYPES are defined purely internally.
+    names.update(dict((e.number, e) for e in ADDITIONAL_ETYPES))
+    world = None  # set on initialization of an 'Entities' instance
+
     def __init__(self, **kwargs):
+        """Entity(eid=eid, etype=etype, x=x, y=y, z=z) -> Entity"""
         self.eid = kwargs["eid"]
         self.x = kwargs["x"]
         self.y = kwargs["y"]
         self.z = kwargs["z"]
         self.velocity = None
-        self.is_bot = False
+        #log.msg(str(self))
+
+    equipment = property(lambda s: s._inv if hasattr(s, '_inv') else None,
+                         lambda s, v: setattr(s, '_inv', v))
+
+    is_bot = property(lambda s: s._bot if hasattr(s, '_bot') else False,
+                      lambda s, v: setattr(s, '_bot', v))
+
+    is_manager = property(lambda s: s._mgr if hasattr(s, '_mgr') else False,
+                          lambda s, v: setattr(s, '_mgr', v))
+
+    is_commander = property(lambda s: s._cmd if hasattr(s, '_cmd') else False,
+                            lambda s, v: setattr(s, '_cmd', v))
 
     @property
-    def position(self):
-        return Vector(self.x / 32.0, self.y / 32.0, self.z / 32.0)
+    def name(self):
+        return self._name()
+
+    def _name(self):
+        try:
+            name = self.names[self.etype].name
+        except KeyError:
+            name = "Unknown Entity Type ({})".format(self.etype)
+        return name
 
     @property
     def grid_position(self):
@@ -28,12 +70,34 @@ class Entity(object):
         z = self.z / 32
         return Vector(x, y, z)
 
+    @property
+    def position(self):
+        return Vector(self.x / 32.0, self.y / 32.0, self.z / 32.0)
+
+    def distance(self, other):
+        """Return the distance between two entities"""
+        return self.position.distance(other.position)
+
+    def __str__(self):
+        equipment = ', with: ' + str(self.equipment) if self.equipment else ''
+        return "{} at {}{}".format(self.name, self.position, equipment)
+
 
 class EntityBot(Entity):
     def __init__(self, **kwargs):
+        """EntityBot(eid=eid, x=x, y=y, z=z) -> Entity
+        etype doesn't matter, we shouldn't be sending/receiving any data
+        to/from the server about this entity anyways -- the player(bot) is
+        handled through other means (and a different packet set).
+        If we make the interface match (at least partially), it will be a
+        inaccurate of the underlying structure -- ..so, why does this exist
+        at all, unless we mirror the entity api to in some way or other affect
+        the player..?
+        """
+        self.etype = -1
         super(EntityBot, self).__init__(**kwargs)
         self.is_bot = True
-
+        log.msg(str(self))
 
 class EntityLiving(Entity):
     def __init__(self, **kwargs):
@@ -53,26 +117,79 @@ class EntityLiving(Entity):
 
 
 class EntityMob(EntityLiving):
+    names = dict((e.number, e) for e in namedata.mob_entities)
     def __init__(self, **kwargs):
+        # This must come before class init, or log message will fail.
+        self.etype = kwargs['etype']
         super(EntityMob, self).__init__(**kwargs)
-        self.etype = kwargs["etype"]
         self.head_yaw = kwargs["yaw"]
         self.status = None
         #TODO assign mob type according to the etype and metadata
 
 
 class EntityPlayer(EntityLiving):
+    last_known_position = {}
     def __init__(self, **kwargs):
-        super(EntityPlayer, self).__init__(**kwargs)
+        # this is sorta bad form, but creation of 'username' must come before
+        # superclass initialization calls, to allow the 'name' property to
+        # function properly.
         self.username = kwargs["username"]
+        self.etype = -3
+        super(EntityPlayer, self).__init__(**kwargs)
+        self.world = kwargs["world"]
         self.held_item = kwargs["held_item"]
-        #TODO Assign head positioning info
+        # Player's looking direction
+        self.yaw = kwargs["yaw"]
+        self.pitch = kwargs["pitch"]
+#TODO: remove this
+        log.msg(str(self))
+
+        if self.world.commander.name == self.username:
+            self.world.commander.eid = self.eid
+        if self.is_commander:
+            log.msg("Found commander: " + self.username)
+            self.world.chat.send_message("Hello, commander "+self.username)
+        elif self.is_manager:
+            log.msg("Found manager: " + self.username)
+            self.world.chat.send_message("Oh, hai, "+self.username)
+        else:
+            log.msg("Found player: " + self.username)
+
+    def __del__(self):
+        if not hasattr(self, 'world'):
+            log.msg("%s object had no world attribute." % str(type(self)))
+            return
+        self.last_known_position[self.username] = self.position
+        if self.is_commander:
+            if self.world.commander.eid == self.eid:
+                log.msg("Lost commander (%s)" % self.username)
+                self.world.chat.send_message("Don't forget me, "+self.username)
+                self.world.commander.eid = None
+            else:
+                log.msg("Warning, destroyed a commander entity, but "
+                        "eid does not match world.commander.eid")
+        elif self.is_manager:
+            if self.world.entities.players.get(self.username) == self.eid:
+                log.msg("Lost manager '%s'" % self.username)
+                self.world.chat.send_message("See you 'round, "+self.username)
+            else:
+                log.msg("Warning, destroyed a manager player entity, but "
+                        "eid does not match the one in entities.players")
+        else:
+            log.msg("Player '%s' logged off." % self.username)
+
+    def _name(self):
+        return 'Player "%s"' % self.username
+
+    is_manager = property(lambda s: s.username in s.world.managers)
+
+    is_commander = property(lambda s: s.username == s.world.commander.name)
 
 
 class EntityVehicle(Entity):
     def __init__(self, **kwargs):
-        super(EntityVehicle, self).__init__(**kwargs)
         self.etype = kwargs["etype"]
+        super(EntityVehicle, self).__init__(**kwargs)
         self.thrower = kwargs["object_data"]
         if self.thrower > 0:
             self.vel_x = kwargs["velocity"]["x"]
@@ -83,6 +200,7 @@ class EntityVehicle(Entity):
 
 class EntityExperienceOrb(Entity):
     def __init__(self, **kwargs):
+        self.etype = -3
         super(EntityExperienceOrb, self).__init__(**kwargs)
         self.quantity = kwargs["count"]
 
@@ -99,21 +217,25 @@ class EntityPainting(Entity):
         self.title = kwargs["title"]
 
 
-class Entities(object):
+class Entities(dict):
     def __init__(self, dimension):
+        """Contains entities keyed by eid, and has various operations which
+        can be done on an entity."""
+        super(Entities, self).__init__()
         self.dimension = dimension
         self.world = dimension.world
-        self.entities = {}
+        self.players = {}
 
-    def has_entity(self, eid):
-        return eid in self.entities
+    def __setitem__(self, k, v):
+        if k is None:
+            raise ValueError("Entity man not have an eid of None")
+        return super(Entities, self).__setitem__(k, v)
 
     def get_entity(self, eid):
-        if eid is None:
-            return None
-        return self.entities.get(eid, None)
+        return self.get(eid, None)
 
     def maybe_commander(self, entity):
+        """Note the commander's last position, presumably usable somewhere."""
         if self.world.commander.eid != entity.eid:
             return
         gpos = entity.grid_position
@@ -142,38 +264,35 @@ class Entities(object):
             self.maybe_commander(entity)
         return f
 
-    def new_bot(self, eid):
-        self.entities[eid] = EntityBot(eid=eid, x=0, y=0, z=0)
-
     def on_new_player(self, **kwargs):
-        self.entities[kwargs["eid"]] = EntityPlayer(**kwargs)
-        if self.world.commander.name == kwargs["username"]:
-            self.world.commander.eid = kwargs["eid"]
+        username, eid = kwargs['username'], kwargs['eid']
+        self[eid] = EntityPlayer(world=self.world, **kwargs)
+        self.players[username] = eid
 
     def on_new_dropped_item(self, **kwargs):
-        self.entities[kwargs["eid"]] = EntityDroppedItem(**kwargs)
+        self[kwargs["eid"]] = EntityDroppedItem(**kwargs)
 
     def on_new_vehicle(self, **kwargs):
-        self.entities[kwargs["eid"]] = EntityVehicle(**kwargs)
+        self[kwargs["eid"]] = EntityVehicle(**kwargs)
 
     def on_new_mob(self, **kwargs):
-        self.entities[kwargs["eid"]] = EntityMob(**kwargs)
+        self[kwargs["eid"]] = EntityMob(**kwargs)
 
     def on_new_painting(self, **kwargs):
-        self.entities[kwargs["eid"]] = EntityPainting(**kwargs)
+        self[kwargs["eid"]] = EntityPainting(**kwargs)
 
     def on_new_experience_orb(self, **kwargs):
-        self.entities[kwargs["eid"]] = EntityExperienceOrb(**kwargs)
+        self[kwargs["eid"]] = EntityExperienceOrb(**kwargs)
 
     def on_destroy(self, eids):
         for eid in eids:
             entity = self.get_entity(eid)
             if entity:
-                del self.entities[eid]
-                if self.world.commander.eid == eid:
-                    self.world.commander.eid = None
+                del self[eid]
+                if isinstance(entity, EntityPlayer):
+                    self.players.pop(entity.username)
             else:
-                log.msg('Cannot destroy entity id %d because it is not registered' % eid)
+                log.msg('Cannot destroy entity %d: it is not registered' % eid)
 
     @entityupdate
     def on_move(self, entity, dx, dy, dz):

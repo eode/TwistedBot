@@ -4,10 +4,10 @@ MC TECHNICAL INFO
 - time number is an integer between 0 and 24000, inclusive, where 0 is dawn, 6000 midday, 12000 dusk and 18000 midnight
 - in debug screen: player facing direction, "f" under coordinates such that 0 is South, 1 is West, 2 is North and 3 is East
 - directions (making right hand rule):
-		+x east
-		-x west
-		+z south
-		-z north
+        +x east
+        -x west
+        +z south
+        -z north
 
 
 PLAYER BODY

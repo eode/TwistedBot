@@ -9,10 +9,37 @@ import logbot
 import fops
 import blocks
 import behaviours
+import plugins
 from axisbox import AABB
 
 
 log = logbot.getlogger("BOT_ENTITY")
+
+class Bot(object):
+    """This is meant to be a control-level abstraction of the bot, implementing
+    all aspects of a normal player interface, as well as being a central,
+    unified location for bot behaviour access gained through plugins."""
+    def __init__(self, bot_entity):
+        self.entity = bot_entity
+        self.world = bot_entity.world
+        self.behaviours = plugins.behaviours
+
+    def __getattr__(self, a):
+        if a in self.behaviours:
+            return self.behaviours[a]
+
+    def click(self, target, left_click=True):
+        """Accepts an entity or entity id.  Later, this should accept a block
+        or block coord as well.
+        """
+        target_eid = target if type(target) == int else target.eid
+        self.world.send_packet('animation', eid=self.entity.eid, animation=1)
+        self.world.send_packet('use entity', eid=self.entity.eid,
+                               target=target, button=left_click)
+
+    def hold(self, item):
+        """Hold an item.. ..ideally.."""
+        raise NotImplementedError()
 
 
 class BotObject(object):
@@ -105,6 +132,7 @@ class BotEntity(object):
         self.check_location_received = False
         self.spawn_point_received = False
         self.behaviour_tree = behaviours.BehaviourTree(self.world, self)
+        self.cancel_value = None
 
     def on_connection_lost(self):
         if self.location_received:
@@ -132,7 +160,8 @@ class BotEntity(object):
         if self.location_received is False:
             return
         if not self.ready:
-            self.ready = self.in_complete_chunks(self.bot_object) and self.spawn_point_received
+            self.ready = (self.in_complete_chunks(self.bot_object)
+                           and self.spawn_point_received)
             if not self.ready:
                 return
         self.move(self.bot_object)
@@ -141,7 +170,8 @@ class BotEntity(object):
         self.send_action(self.bot_object)
         self.stop_sneaking(self.bot_object)
         if not self.i_am_dead:
-            utils.do_now(self.behaviour_tree.tick)
+            utils.do_now(self.behaviour_tree.tick, cancel=self.cancel_value)
+            self.cancel_value = None
 
     def send_location(self, b_obj):
         self.world.send_packet("player position&look", {
@@ -156,7 +186,7 @@ class BotEntity(object):
         """
         if b_obj.action != b_obj._action:
             b_obj.action = b_obj._action
-            self.send_packet("entity action", {"eid": self.eid, "action": b_obj._action})
+            self.world.send_packet("entity action", {"eid": self.eid, "action": b_obj._action})
 
     def turn_to_point(self, b_obj, point):
         if point[0] == b_obj.x and point[2] == b_obj.z:
@@ -424,7 +454,7 @@ class BotEntity(object):
         if self.world.grid.aabb_collides(bb):
             return False
         else:
-            return not self.world.grid.is_any_liquid(bb)
+            return not self.world.grid.contains_liquid(bb)
 
     def do_respawn(self):
         self.world.send_packet("client statuses", {"status": 1})

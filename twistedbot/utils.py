@@ -7,10 +7,16 @@ from twisted.internet import defer, reactor
 import logbot
 
 
-cross = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1) if ((i == 0) or (j == 0)) and (j != i)]
-corners = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1) if (i != 0) and (j != 0)]
+cross = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)
+            if ((i == 0) or (j == 0)) and (j != i)]
+corners = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)
+            if (i != 0) and (j != 0)]
 adjacency = cross + corners
 plane = [(i, j) for i in (-1, 0, 1) for j in (-1, 0, 1)]
+
+
+# Used in communication between bot and UI
+Message = namedtuple('Message', 'name data')
 
 
 def do_now(fn, *args, **kwargs):
@@ -83,7 +89,8 @@ class OrderedLinkedList(object):
         return len(self.olist)
 
     def __str__(self):
-        return "%s %s [%s]" % (self.name, len(self), ",".join([str((o.order, o.obj)) for o in self.olist]))
+        return "%s %s [%s]" % (self.name, len(self),
+                        ", ".join([str((o.order, o.obj)) for o in self.olist]))
 
     def iter(self, forward_direction=True):
         if forward_direction:
@@ -135,6 +142,8 @@ class OrderedLinkedList(object):
 
 
 class Vector(object):
+    __slots__ = ['x', 'y', 'z']
+
     def __init__(self, x, y, z):
         self.x = x
         self.y = y
@@ -150,6 +159,21 @@ class Vector(object):
     def __eq__(self, o):
         return self.x == o.x and self.y == o.y and self.z == o.z
 
+    def __ne__(self, o):
+        return self.x != o.x or self.y != o.y or self.z != o.z
+
+    def __gt__(self, o):
+        raise NotImplementedError()
+
+    def __lt__(self, o):
+        raise NotImplementedError()
+
+    def __ge__(self, o):
+        raise NotImplementedError()
+
+    def __le__(self, o):
+        raise NotImplementedError()
+
     def __add__(self, v):
         return Vector(self.x + v.x, self.y + v.y, self.z + v.z)
 
@@ -160,10 +184,10 @@ class Vector(object):
         return Vector(self.x * m, self.y * m, self.z * m)
 
     def __str__(self):
-        return "<%s %s %s>" % (self.x, self.y, self.z)
+        return "x:%s y:%s z:%s" % (self.x, self.y, self.z)
 
     def __repr__(self):
-        return self.__str__()
+        return '<%s>' % self.__str__()
 
     @property
     def tuple(self):
@@ -204,6 +228,9 @@ class Vector(object):
             self.y *= -1
             self.z *= -1
         return self
+
+    def distance(self, other):
+        return math.sqrt((self - other).size_pow)
 
 
 class Vector2D(object):

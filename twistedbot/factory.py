@@ -14,13 +14,19 @@ from proxy_processors.default import process_packets as packet_printout
 proxy_processors.default.ignore_packets = []
 proxy_processors.default.filter_packets = []
 
-log = logbot.getlogger("PROTOCOL")
+log = logbot.getlogger("FACTORY")
+
+# Packet debugging enabled by default if debugging is on.
+log_packet_types = dict([(x, False) for x in xrange(256)])
+# Disable packet debugging for these packet types:
+enabled_packets = []
+
+for pack in enabled_packets:
+    log_packet_types[pack] = True
 
 
 class MineCraftProtocol(Protocol):
     def __init__(self, world):
-        self.to_bot = world.to_bot
-        self.to_gui = world.to_gui
         self.world = world
         self.world.protocol = self
         self.leftover = ""
@@ -30,10 +36,12 @@ class MineCraftProtocol(Protocol):
         self.router = {
             0: self.p_ping,
             1: self.p_login,
+            # 2: handshake to server
             3: self.p_chat,
             4: self.p_time,
             5: self.p_entity_equipment,
             6: self.p_spawn,
+            # 7: self.p_use_entity (client to server),
             8: self.p_health,
             9: self.p_respawn,
             13: self.p_location,
@@ -115,15 +123,17 @@ class MineCraftProtocol(Protocol):
         parsed_packets, self.leftover = parse_packets(
             self.leftover + bytestream)
         if config.DEBUG:
-            packet_printout(
-                "SERVER", parsed_packets, self.encryption_on, self.leftover)
+            packet_printout("SERVER", parsed_packets, self.encryption_on,
+                            self.leftover, log_packet_types)
         self.packets.extend(parsed_packets)
         self.packet_iter(self.packets)
 
     def send_packet(self, name, payload):
         p = make_packet(name, payload)
         if config.DEBUG:
-            packet_printout("CLIENT", [(packets_by_name[name], Container(**payload))])
+            packet_printout("CLIENT",
+                            [(packets_by_name[name], Container(**payload))],
+                            types=log_packet_types)
         self.sendData(p)
 
     def packet_iter(self, ipackets):
@@ -148,14 +158,16 @@ class MineCraftProtocol(Protocol):
     def p_login(self, c):
         msg = ("LOGIN DATA eid %s level type: %s, game_mode: %s, "
                "dimension: %s, difficulty: %s, max players: %s")
-        log.msg( msg % (c.eid, c.level_type, c.game_mode, c.dimension,
+        log.msg(msg % (c.eid, c.level_type, c.game_mode, c.dimension,
                         c.difficulty, c.players))
-        self.world.on_login(bot_eid=c.eid, game_mode=c.game_mode, dimension=c.dimension, difficulty=c.difficulty)
-        utils.do_now(self.send_packet, "locale view distance", {'locale': 'en_GB',
-                                                                'view_distance': 2,
-                                                                'chat_flags': 0,
-                                                                'difficulty': 0,
-                                                                'show_cape': False})
+        self.world.on_login(bot_eid=c.eid, game_mode=c.game_mode,
+                            dimension=c.dimension, difficulty=c.difficulty)
+        locale_data = {'locale': 'en_GB',
+                       'view_distance': 2,
+                       'chat_flags': 0,
+                       'difficulty': 0,
+                       'show_cape': False}
+        utils.do_now(self.send_packet, "locale view distance", locale_data)
 
     def p_chat(self, c):
         self.world.chat.on_chat_message(c.message)
@@ -165,25 +177,29 @@ class MineCraftProtocol(Protocol):
         self.world.on_time_update(**c)
 
     def p_entity_equipment(self, c):
-        pass
+        self.world.on_entity_equipment(**c)
 
     def p_spawn(self, c):
         log.msg("SPAWN POSITION %s %s %s" % (c.x, c.y, c.z))
         self.world.on_spawn_position(c.x, c.y, c.z)
 
+    def p_use_entity(self, c):
+        log.msg("'use entity' received fom server: %s" % str(c))
+
     def p_health(self, c):
-        self.to_gui.put(('health update', c))
+        self.world.to_gui('health', c)
         self.world.bot.on_health_update(c.hp, c.fp, c.saturation)
 
     def p_respawn(self, c):
         log.msg("RESPAWN received")
-        self.world.on_respawn(game_mode=c.game_mode, dimension=c.dimension, difficulty=c.difficulty)
+        self.world.on_respawn(game_mode=c.game_mode, dimension=c.dimension,
+                              difficulty=c.difficulty)
 
     def p_location(self, c):
         log.msg("received LOCATION X:%f Y:%f Z:%f STANCE:%f GROUNDED:%s" %
                 (c.position.x, c.position.y, c.position.z,
                  c.position.stance, c.grounded.grounded))
-        self.to_gui.put(('location', c))
+        self.world.to_gui('location', c)
         c.position.y, c.position.stance = c.position.stance, c.position.y
         self.send_packet("player position&look", c)
         self.world.bot.on_new_location({"x": c.position.x,
@@ -195,7 +211,7 @@ class MineCraftProtocol(Protocol):
                                         "pitch": c.orientation.pitch})
 
     def p_held_item_change(self, c):
-        #TODO ignore for now
+#TODO This (held_item_change)!!
         pass
 
     def p_use_bed(self, c):
@@ -206,7 +222,8 @@ class MineCraftProtocol(Protocol):
         pass
 
     def p_animate(self, c):
-        #TODO this is two way, client uses only value 1 (swing arm). Probably needed.
+        # Ignored from server
+#TODO this is two way, client uses only value 1 (swing arm). Probably needed.
         pass
 
     def p_player(self, c):
@@ -430,3 +447,12 @@ class MineCraftFactory(ReconnectingClientFactory):
     def clientConnectionFailed(self, connector, reason):
         log.msg('Connection failed, reason:', reason.getErrorMessage())
         ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
+
+    def shut_down(self, reason=''):
+        """Shutdown, logging a reason as to why shutdown was called.  This is
+        what should be called from within the thread for a clean shutdown."""
+        reason = reason if reason else '(no reason given)'
+        log.msg("Shutting Down")
+        self.world.shutdown_reason = reason
+        self.log_connection_lost = False
+        reactor.stop()

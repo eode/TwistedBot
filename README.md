@@ -24,11 +24,11 @@ Twitter [@lukleh](https://twitter.com/lukleh "@lukleh")
 #### Usage
 By default connects to localhost
 
-	pypy bot.py 
+    pypy bot.py 
 
 Possible flags
 
-	pypy bot.py -h
+    pypy bot.py -h
 
 #### In game commands
 If your username (commander) is set, then you can use chat to send commands to bot.
@@ -46,9 +46,9 @@ Use signs as a waypoints. When you want the sign to be part of waypoints that bo
 
 - place sign
 - line 1: 'waypoint' 
-- line 2: If number, for example '1', '2' or '3.5', it will be used as an order of how to sort the waypoints in group (if line 3 contains text). Otherwise parsed as a name that waypoint can be addressed directly.
-- line 3: Groupname, if given number on line 2, this name groups waypoints.
-- line 4: Name, if number on line 2 and groupname on line 3, then has same function as name in line 2.
+- line 2: Name of waypoint
+- line 3: Groupname (Optional): Add this waypoint to a group
+- line 4: Number - Determines the order for the bot to visit the sign, if it's in a group
 
 ## Proxy
 - Intercepts network traffic between client and server, usefull for debugging and figuring out how Minecraft works.
@@ -58,12 +58,12 @@ Use signs as a waypoints. When you want the sign to be part of waypoints that bo
 #### Usage
 To run with defaults, server is localhost:25565 and proxy is listening on localhost:25566. Then connect your client to localhost:25566.
 
-	pypy proxy.py
-	
+    pypy proxy.py
+    
 When you close proxy, it prints packet statistics before exit.
 
 Possible flags
 
-	pypy proxy.py -h
+    pypy proxy.py -h
 
 To make your own filter, look in twistedbot.proxy_processors.default for an example.

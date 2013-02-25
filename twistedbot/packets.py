@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 # original version from https://github.com/MostAwesomeDude/bravo
 
 from StringIO import StringIO
@@ -29,6 +29,7 @@ import logbot
 # invocations. We need to import the encoding for it first, though.
 
 log = logbot.getlogger("BOT_ENTITY")
+
 
 # ..shouldn't we just be able to use utf-16?
 def ucs2(name):
@@ -80,7 +81,10 @@ def AlphaString(name):
                      MetaField("data", lambda ctx: ctx["length"] * 2),
                      )
             ),
-        encoding="ucs2",
+        # ucs2 and utf-16 are supposed to be technically identical, and the
+        # utf-16 version is python-native.
+        #encoding="ucs2",
+        encoding='utf-16-be'
         )
 
 

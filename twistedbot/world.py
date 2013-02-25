@@ -7,11 +7,14 @@ from Queue import Empty, Full
 import logbot
 import utils
 import config
+import entities
+import inventory
+from items import Item
 from entities import Entities
 from grid import Grid
 from statistics import Statistics
 from chat import Chat
-from botentity import BotEntity
+from botentity import BotEntity, Bot
 from signwaypoints import SignWayPoints
 
 
@@ -28,30 +31,32 @@ class Dimension(object):
 
 
 class DummyQueue(object):
+    close = lambda s: None
     empty = lambda s: True
     full = lambda s: True
+    get = close
     put = lambda s, v: None
     put_nowait = put
-    get = lambda s: None
 
     def get_nowait(self):
         raise Empty()
-
-
 
 
 class World(object):
     def __init__(self, host=None, port=None,
                  commander_name=None, bot_name=None,
                  to_bot_q=None, to_gui_q=None):
-        self.to_bot = DummyQueue() if to_bot_q is None else to_bot_q
-        self.to_gui = DummyQueue() if to_gui_q is None else to_gui_q
-        self.to_gui.put(("bot name", bot_name))
+        self._to_bot = DummyQueue() if to_bot_q is None else to_bot_q
+        self._to_gui = DummyQueue() if to_gui_q is None else to_gui_q
+        self.to_gui("name", bot_name)
         self.server_host = host
         self.server_port = port
         self.commander = Commander(commander_name)
+        # Users who can give the bot non-administrative commands
+        self.managers = set(config.MANAGERS)     # names as given from server
         self.chat = Chat(self)
         self.bot = BotEntity(self, bot_name)
+        self.bot_interface = Bot(self.bot)
         self.stats = Statistics()
         self.game_ticks = 0
         self.connected = False
@@ -70,13 +75,18 @@ class World(object):
         self.last_tick_time = datetime.now()
         self.period_time_estimation = config.TIME_STEP
         utils.do_later(config.TIME_STEP, self.tick)
+        self.shutdown_reason = ''
 
     def predict_next_ticktime(self, tick_start):
         tick_end = datetime.now()
-        d_run = (tick_end - tick_start).total_seconds()  # time this step took
-        t = config.TIME_STEP - d_run  # decreased by computation in tick
-        d_iter = (tick_start - self.last_tick_time).total_seconds()  # real tick period
-        r_over = d_iter - self.period_time_estimation  # diff from scheduled by
+        # time this step took
+        d_run = (tick_end - tick_start).total_seconds()
+        # decreased by computation in tick
+        t = config.TIME_STEP - d_run
+        # real tick period
+        d_iter = (tick_start - self.last_tick_time).total_seconds()
+        # diff from scheduled by
+        r_over = d_iter - self.period_time_estimation
         t -= r_over
         t = max(0, t)  # cannot delay into past
         self.period_time_estimation = t + d_run
@@ -104,13 +114,21 @@ class World(object):
         self.connected = True
 
     def on_shutdown(self):
-        log.msg("Shutdown")
+        reason = self.shutdown_reason
+        reason = reason if reason else "(no reason given)"
+        log.msg("Shutting Down: " + reason)
+        self.to_gui('shutting down', reason)
+        self._to_gui.close()
+        self._to_bot.close()
         self.factory.log_connection_lost = False
-        self.to_gui.put(['shutdown received'])
 
-    def send_packet(self, name, payload):
+    def send_packet(self, name, *payload, **kwpayload):
+        if payload and not kwpayload:
+            kwpayload = payload[0]
+        elif kwpayload and payload:
+            raise ValueError("Received both payload and kwpayload.")
         if self.protocol is not None:
-            self.protocol.send_packet(name, payload)
+            self.protocol.send_packet(name, kwpayload)
         else:
             log.msg("Trying to send %s while disconnected" % name)
 
@@ -118,11 +136,26 @@ class World(object):
         dim = dimension + 1  # to index from 0
         d = self.dimensions[dim]
         self.dimension = d
-        self.entities, self.grid, self.sign_waypoints = d.entities, d.grid, d.sign_waypoints
-        if not self.entities.has_entity(self.bot.eid):
-            self.entities.new_bot(self.bot.eid)
+        self.entities, self.grid = d.entities, d.grid
+        self.sign_waypoints = d.sign_waypoints
+        if self.bot.eid not in self.entities:
+            # no etype given as EntityBot has no server-side corollary
+            new_bot = entities.EntityBot(eid=self.bot.eid, x=0, y=0, z=0)
+            self.entities[new_bot.eid] = new_bot
 
-    def on_login(self, bot_eid=None, game_mode=None, dimension=None, difficulty=None):
+    def on_entity_equipment(self, slot, slotdata, eid):
+        entity = self.entities.get(eid, None)
+        if entity is None:
+            msg = "Equipment for unkown entity %s, slot %s:  %s"
+            log.msg((msg % eid, slot, Item(slotdata)))
+            return
+        if entity.equipment is None:
+            entity.equipment = inventory.InventoryEntityEquipment()
+        entity.equipment[slot] = Item(**slotdata)
+        log.msg("temp " + str(entity))
+
+    def on_login(self, bot_eid=None, game_mode=None, dimension=None,
+                 difficulty=None):
         self.bot.eid = bot_eid
         self.logged_in = True
         self.dimension_change(dimension)
@@ -144,6 +177,23 @@ class World(object):
     def on_time_update(self, age_of_world=None, daytime=None):
         self.age_of_world = age_of_world
         self.daytime = daytime
+
+    def to_bot(self):
+        """Convenience method for getting data from the _to_bot queue.
+        Returns data if there is data, else returns None
+        :rtype: Message
+        """
+        return None if self._to_bot.empty() else self._to_bot.get()
+
+    def to_gui(self, name, data):
+        """world.to_gui('foo', 'stuff') -> send Message 'foo' w/data to gui.
+        This is just a convenience method to turn:
+            world._to_gui.put(Message('foo', data))
+            into:
+            world.to_gui('foo', data)
+        :rtype: Message
+        """
+        self._to_gui.put(utils.Message(name, data))
 
 
 class Commander(object):

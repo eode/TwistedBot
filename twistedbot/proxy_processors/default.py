@@ -60,8 +60,10 @@ def format_packet(data, prefix="  ", depth=1):
                 pr = v.encode('utf8')
             elif isinstance(v, Container):
                 pr = "\n%s" % format_packet(v, depth=depth + 1)
-            elif isinstance(v, types.TupleType) or isinstance(v, types.ListType):
-                pr = "array length %d, first element:\n%s" % (len(v), format_packet(v[0], depth=depth + 1))
+            elif isinstance(v, types.TupleType) \
+              or isinstance(v, types.ListType):
+                pr = "array length %d, first element:\n%s" % (
+                    len(v), format_packet(v[0] if v else '' , depth=depth + 1))
             elif isinstance(v, types.NoneType):
                 pr = str(v)
             elif isinstance(v, types.DictType):
@@ -77,10 +79,12 @@ def format_packet(data, prefix="  ", depth=1):
         return str(data)
 
 
-def process_packets(streamtype, pcks, encrypted=False, leftover=None):
+def process_packets(streamtype, pcks, encrypted=False, leftover=None,
+                    types=None):
     """
         main function to use
         @streamtype - values 'CLIENT' or 'SERVER', depending where this data came from
+        types : if types exists and packet id is not in types, don't log it.
     """
     if not pcks:
         return
@@ -92,7 +96,13 @@ def process_packets(streamtype, pcks, encrypted=False, leftover=None):
             continue
         if filter_packets and packet_id not in filter_packets:
             continue
-        log.msg("id %d %s\n%s" % (packet_id, packets[packet_id].name, format_packet(packet_body)), header=streamtype)
+        msg = "id %d %s\n%s" % (packet_id, packets[packet_id].name,
+                                format_packet(packet_body))
+        if types:
+            if types[packet_id]:
+                log.msg(msg, header=streamtype)
+            continue
+        log.msg(msg, header=streamtype)
 
 
 def finish():
