@@ -58,7 +58,7 @@ class item_page_handler(object):
             prop_data = data[3].sup.stripped_strings if data[3].sup else []
             props = ''.join(prop_data)
             if props:
-                name = name.rsplit(props, 1)[0].strip()
+                name = name.rstrip(props+'\r\n\t ')
             result.append(ItemData(number, name, props))
         return result
 
@@ -85,7 +85,7 @@ class item_page_handler(object):
             prop_data = data[3].sup.stripped_strings if data[3].sup else []
             props = ''.join(prop_data)
             if props:
-                name = name.rsplit(props, 1)[0].strip()
+                name = name.rstrip(props+'\r\n\t ')
             result.append(ItemData(number, name, props))
         return result
 
