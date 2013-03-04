@@ -561,7 +561,7 @@ packets = {
     106: Struct("confirm transaction",
                 UBInt8("wid"),
                 UBInt16("token"),
-                Bool("acknowledged"),
+                Bool("accepted"),
                 ),
     107: Struct("creative inventory action ",
                 UBInt16("slot"),
