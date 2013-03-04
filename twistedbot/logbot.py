@@ -39,7 +39,9 @@ class MinecraftLogObserver(object):
         fmtDict = {'header': eventDict['header'], 'text':
                    text.replace("\n", "\n\t")}
         msgStr = log._safeFormat("[%(header)s] %(text)s\n", fmtDict)
-        util.untilConcludes(self.write, timeStr + " " + msgStr)
+        msgStr = timeStr + " " + msgStr
+
+        util.untilConcludes(self.write, msgStr.encode(sys.stdout.encoding))
         util.untilConcludes(self.flush)
 
 
@@ -70,7 +72,8 @@ def getlogger(name):
 
 def start_filelog(filename=None, kind="other_log"):
     if filename is None:
-        filename = "%s.%s.txt" % (kind, datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+        timefmt = "%Y.%m.%d_%H.%M.%S"
+        filename = "%s.%s.txt" % (kind, datetime.now().strftime(timefmt))
     fullfile = os.getcwd() + filename
     try:
         f = open(filename, "w")
@@ -91,7 +94,8 @@ def start_proxy_filelog():
     start_filelog(kind="proxy_log")
 
 
-log.startLoggingWithObserver(MinecraftLogObserver(sys.stdout).emit, setStdout=0)
+log.startLoggingWithObserver(MinecraftLogObserver(sys.stdout).emit,
+                             setStdout=0)
 default_logger = getlogger("-")
 default_logger.msg("Start logging")
 msg = default_logger.msg
