@@ -17,49 +17,61 @@ class Chat(object):
 #        self.clean_colors_re = re.compile(ur'\xA7.', re.UNICODE)
         self.command_str = config.COMMAND_SHORTCUT
         self.wspace_re = re.compile(ur"\s+")
-        self.chat_spam_threshold_count = 0
-        self.chat_spam_threshold_buffer = deque()
+        self.spam_threshold_count = 0
+        self.message_buffer = deque()
         self.message_cost = 20 * 1    # one message per second
         self.free_messages = 20 * 3   # Three free messages before regulating
-        self.verbs = {}
-        for plugin in plugins.behaviours:
-            plugin = plugins.behaviours[plugin]
-            for verb in plugin.verbs:
-                if verb in self.verbs:
-                    log.msg('Cannot override pre-existing verb "%s"' % verb)
-                    continue
-                else:
-                    self.verbs[verb] = plugin.verbs[verb]
+        # Max length (in characters, not bytes) allowed for a message
+        self.size_max = 100
+
+    @property
+    def verbs(self):
+        return self.world.bot.controller.verbs
 
     def tick(self):
-        if self.chat_spam_threshold_count > 0:
-            self.chat_spam_threshold_count -= 1
-        if self.chat_spam_threshold_count <= self.free_messages \
-          and self.chat_spam_threshold_buffer:
-            message, who = self.chat_spam_threshold_buffer.popleft()
-            self._send_message(message, who)
+        if not self.world.connected:
+            return
+        if self.spam_threshold_count > 0:
+            self.spam_threshold_count -= 1
+        if self.spam_threshold_count <= self.free_messages \
+          and self.message_buffer:
+            message, who, whisper = self.message_buffer.popleft()
+            self._send_message(message, who, whisper)
 
-    def send_message(self, msg, who=config.COMMANDER):
-        self.chat_spam_threshold_buffer.append((msg, who))
+    def send_message(self, msg, who=None, whisper=config.WHISPER):
+        if who is None:
+            who = self.world.commander.name
+        msg = msg.strip().replace('\t', '    ')  # tab is an illegal character
+        if '\n' in msg:
+            for part in msg.split('\n'):
+                self.message_buffer.append((part, who, whisper))
+            return
+        else:
+            self.message_buffer.append((msg, who, whisper))
         self.tick()  # Run a tick now, to keep log messages in order
 
-    def _send_message(self, msg, who):
-        self.chat_spam_threshold_count += self.message_cost
+    def _send_message(self, msg, who, whisper):
+        self.spam_threshold_count += self.message_cost
         prefix = ''
-        if config.WHISPER:
-            prefix = '/tell ' + who
-            msg = prefix + msg
-        if len(msg) >= 100:
-            # Minecraft server balks at messages greater than 100 characters.
-            # split them up and push them into the spam buffer.
-            # cut this message in half and put it at the beginning
-            plen = len(prefix)
-            msg = msg[plen:]  # remove from current message
-            # shove the pieces back up the queue so they're next
-            beginning, end = msg[:100 - plen - 1], msg[100 - plen - 1:]
-            for message in (end, beginning):
-                self.chat_spam_threshold_buffer.appendleft((message, who))
-            return
+        if whisper:
+            prefix = '/tell %s ' % who
+        # Somehow, a message is two extra characters longer.  In theory, the
+        # full packet should be at most 203 bytes --
+        # packet id (1), unicode prefix (2), len(string) * 2
+        # ..but, there's an extra two chars / four bytes that get lopped off
+        # by the server or locally for some reason..  oh well.
+        plen = len(prefix) + 2   # 2 fewer characters than the max
+        if len(msg) + plen > self.size_max:
+            split = self.size_max - plen
+            # look up to 15 chars before required split for a space to break on
+            found_space = msg.rfind(' ', split - 15, split)
+            if found_space != -1:
+                split = found_space + 1
+            unsent = msg[split:]
+            msg = msg[:split]
+            # shove the second piece back on the queue so it's next
+            self.message_buffer.appendleft((unsent, who, whisper))
+        msg = prefix + msg
         log.msg(">> %s" % msg)
         self.world.send_packet("chat message", {"message": msg})
 
@@ -84,7 +96,7 @@ class Chat(object):
         control_char = u'\xa7'
         while control_char in msg:
             loc = msg.find(control_char)
-            msg = msg[:loc] + msg[loc+2:]
+            msg = msg[:loc] + msg[loc + 2:]
         msg = self.wspace_re.sub(" ", msg)
         msg = msg.strip()
         return msg
@@ -101,10 +113,8 @@ class Chat(object):
         verbdata = command.split(None, 1)
         verb, data = verbdata if len(verbdata) == 2 else (verbdata[0], '')
         # Now, we'll execute the appropriate plugin.
-        context = {'chat': self, 'world': self.world,
-                   'factory': self.world.factory}
         if verb in self.verbs:
-            self.verbs[verb](speaker, verb, data, context)
+            self.verbs[verb](speaker, verb, data, self.world.bot.controller)
         else:
             self.send_message("Unknown command: %s %s " % (verb, data))
 
