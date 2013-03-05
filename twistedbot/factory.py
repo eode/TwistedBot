@@ -36,64 +36,69 @@ class MineCraftProtocol(Protocol):
         self._last_token = 0
 
         self.router = {
-            0: self.p_ping,
-            1: self.p_login,
-            # 2: handshake to server
-            3: self.p_chat,
-            4: self.p_time,
-            5: self.p_entity_equipment,
-            6: self.p_spawn,
-            # 7: self.p_use_entity (client to server),
-            8: self.p_health,
-            9: self.p_respawn,
-            13: self.p_location,
-            16: self.p_held_item_change,
-            17: self.p_use_bed,
-            18: self.p_animate,
-            20: self.p_player,
-            21: self.p_dropped_item,
-            22: self.p_collect,
-            23: self.p_vehicle,
-            24: self.p_mob,
-            25: self.p_spawn_painting,
-            26: self.p_experience_orb,
-            28: self.p_entity_velocity,
-            29: self.p_entity_destroy,
-            31: self.p_entity_move,
-            32: self.p_entity_look,
-            33: self.p_entity_move_look,
-            34: self.p_entity_teleport,
-            35: self.p_entity_head_look,
-            38: self.p_entity_status,
-            39: self.p_entity_attach,
-            40: self.p_entity_metadata,
-            41: self.p_entity_effect,
-            42: self.p_entity_remove_effect,
-            43: self.p_levelup,
-            51: self.p_chunk,
-            52: self.p_multi_block_change,
-            53: self.p_block_change,
-            54: self.p_block_action,
-            55: self.p_block_break_animation,
-            56: self.p_bulk_chunk,
-            60: self.p_explosion,
-            61: self.p_sound,
-            62: self.p_named_sound,
-            70: self.p_state,
-            71: self.p_thunderbolt,
-            103: self.p_window_slot,
-            104: self.p_inventory,
-            130: self.p_sign,
-            131: self.p_item_data,
-            132: self.p_update_tile,
-            200: self.p_stats,
-            201: self.p_players,
-            202: self.p_abilities,
-            203: self.p_tab_complete,
-            250: self.p_plugin_message,
-            252: self.p_encryption_key_response,
-            253: self.p_encryption_key_request,
-            255: self.p_error,
+            0x00: self.p_ping,
+            0x01: self.p_login,
+            # 0x02: handshake to server
+            0x03: self.p_chat,
+            0x04: self.p_time,
+            0x05: self.p_entity_equipment,
+            0x06: self.p_spawn,
+            # 0x07: self.p_use_entity (client to server),
+            0x08: self.p_health,
+            0x09: self.p_respawn,
+            0x0d: self.p_location,
+            0x10: self.p_held_item_change,
+            0x11: self.p_use_bed,
+            0x12: self.p_animate,
+            0x14: self.p_player,
+            0x15: self.p_dropped_item,
+            0x16: self.p_collect,
+            0x17: self.p_vehicle,
+            0x18: self.p_mob,
+            0x19: self.p_spawn_painting,
+            0x1a: self.p_experience_orb,
+            0x1c: self.p_entity_velocity,
+            0x1d: self.p_entity_destroy,
+            0x1f: self.p_entity_move,
+            0x20: self.p_entity_look,
+            0x21: self.p_entity_move_look,
+            0x22: self.p_entity_teleport,
+            0x23: self.p_entity_head_look,
+            0x26: self.p_entity_status,
+            0x27: self.p_entity_attach,
+            0x28: self.p_entity_metadata,
+            0x29: self.p_entity_effect,
+            0x2a: self.p_entity_remove_effect,
+            0x2b: self.p_levelup,
+            0x33: self.p_chunk,
+            0x34: self.p_multi_block_change,
+            0x35: self.p_block_change,
+            0x36: self.p_block_action,
+            0x37: self.p_block_break_animation,
+            0x38: self.p_bulk_chunk,
+            0x3c: self.p_explosion,
+            0x3d: self.p_sound,
+            0x3e: self.p_named_sound,
+            0x46: self.p_state,
+            0x47: self.p_spawn_global_entity,
+            0x64: self.p_open_window,
+            0x65: self.p_close_window,
+            0x66: self.p_click_window,
+            0x67: self.p_set_slot,
+            0x68: self.p_set_window_items,
+            0x67: self.p_window_slot,
+            0x6a: self.p_confirm_transaction,
+            0x82: self.p_sign,
+            0x83: self.p_item_data,
+            0x84: self.p_update_tile,
+            0xc8: self.p_stats,
+            0xc9: self.p_players,
+            0xca: self.p_abilities,
+            0xcb: self.p_tab_complete,
+            0xfa: self.p_plugin_message,
+            0xfc: self.p_encryption_key_response,
+            0xfd: self.p_encryption_key_request,
+            0xff: self.p_error,
         }
 
     def connectionMade(self):
@@ -416,7 +421,7 @@ class MineCraftProtocol(Protocol):
         self.transact(_packet=c)
 
     def p_sign(self, c):
-        self.world.sign_waypoints.on_new_sign(c.x, c.y, c.z, c.line1, c.line2, c.line3, c.line4)
+        self.world.sign_waypoints.on_new_sign(**c)
 
     def p_item_data(self, c):
         """ data for map item """
@@ -478,7 +483,9 @@ class MineCraftProtocol(Protocol):
             self.send_packet("client statuses", {"status": 0})
 
     def p_error(self, c):
-        log.msg("Server kicked me out with message: %s" % c.message)
+        log.msg('received error packet')
+        msg = 'Server kicked me out with message "%s"' % c.message
+        self.world.shutdown_reason = msg
         reactor.stop()
 
 
