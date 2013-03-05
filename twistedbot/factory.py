@@ -32,6 +32,8 @@ class MineCraftProtocol(Protocol):
         self.leftover = ""
         self.encryption_on = False
         self.packets = deque()
+        self._transactions = {}
+        self._last_token = 0
 
         self.router = {
             0: self.p_ping,
@@ -150,6 +152,49 @@ class MineCraftProtocol(Protocol):
         else:
             log.msg("Unknown packet %d" % pid)
             reactor.stop()
+
+    def transact(self, func=None, cancel=None, _packet=None):
+        """transact() -> unique token
+        transact(func=my_callback) -> unique token
+        transact(cancel=token) -> cancel an unsent token
+
+        A unique token is returned, which should be used in an action requiring
+        transaction with the server.  If no action is made, you should call
+        'transact(cancel=token)' with the token you received, or there will be
+        a memory leak.
+
+        If func is given, func(accepted) will be called when the server
+        responds -- where 'accepted' is True if the server accepted the
+        transaction, and False if it was rejected.
+        """
+        if cancel:
+            if cancel in self._transactions:
+                self._transactions.pop(cancel)
+            return
+        if _packet is None:
+            if func is None:
+                func = lambda accepted: None
+            self._last_token += 1
+            if self._last_token > 32767:
+                self._last_token = -32768
+            while self._last_token in self._transactions:
+                self._last_token += 1
+                if self._last_token > 32767:
+                    self._last_token = -32768
+            self._transactions[self._last_token] = func
+            return self._last_token
+        accepted = 'accepted' if _packet.accepted else 'rejected'
+        if _packet.token in self._transactions:
+            if not _packet.accepted:
+                # confirm rejection
+                self.send_packet('confirm transaction', _packet)
+            func = self._transactions.pop(_packet.token)
+            func(_packet.accepted)
+            log.msg("Transaction %s %s by server" % (_packet.token, accepted))
+        else:
+            log.msg("Unknwon transaction %s %s by server!" % (_packet.token,
+                                                              accepted))
+
 
     def p_ping(self, c):
         pid = c.pid
@@ -342,14 +387,33 @@ class MineCraftProtocol(Protocol):
     def p_state(self, c):
         pass
 
-    def p_thunderbolt(self, c):
-        pass
+    def p_spawn_global_entity(self, c):
+        log.msg("Lightning!!!!")
+
+    def p_open_window(self, c):
+        log.msg("open_window: " + str(c))
+
+    def p_close_window(self, c):
+        log.msg("close_window: " + str(c))
+
+    def p_click_window(self, c):
+        log.msg("click_window: " + str(c))
+
+    def p_set_slot(self, c):
+        log.msg("set_slot: " + str(c))
+        self.world.inventories.set_slot(**c)
+
+    def p_set_window_items(self, c):
+        # log.msg("set_window_items: " + str(c))
+        self.world.inventories.set_window_items(**c)
 
     def p_window_slot(self, c):
-        pass
+        #log.msg("window_slot: " + str(c))
+        self.world.inventories.window_slot(**c)
 
-    def p_inventory(self, c):
-        pass
+    def p_confirm_transaction(self, c):
+        log.msg("confirm transaction: " + str(c))
+        self.transact(_packet=c)
 
     def p_sign(self, c):
         self.world.sign_waypoints.on_new_sign(c.x, c.y, c.z, c.line1, c.line2, c.line3, c.line4)

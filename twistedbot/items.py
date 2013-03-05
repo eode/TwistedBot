@@ -7,23 +7,76 @@ from resources import namedata
 import blocks
 
 
-class Item(object):
-    __slots__ = ['id', 'count', 'size', 'data']
+class Slot(object):
     names = dict((i.number, i.name) for i in namedata.block_items)
     names.update(dict((i.number, i.name) for i in namedata.nonblock_items))
 
+    name = property(lambda self: "nothing" if self.id is None else \
+                    self.names.get(self.id, "Unknown Item!"))
+
+
+
+class NoItem(Slot):
+    """This is returned by inventory windows when a window slot contains None.
+    It compares as nonexistent in "if noitem_instance: .." statements, but it
+    provides a namespace in which the 'slot' attribute can be set.
+    """
+    __slots__ = ['wid', 'slot']
+
+    id = None
+    wid = None
+    slot = None
+
+    def __nonzero__(self):
+        return False
+
+    def __str__(self):
+        return "<empty>"
+
+    def __repr__(self):
+        return "NoItem()"
+
+
+class Item(Slot):
+    __slots__ = ['id', 'count', 'size', 'damage', 'data']
     def __init__(self, id, count, size,  damage, data):
+        """Item(**slotdata) -> Item object
+        slotdata must not be 'empty' -- empty slots are represented with None.
+        For shorthand when dealing directly with slotdata, use
+        Item.from_slotdata(slotdata)
+        ..which will return either an Item or None as is appropriate.
+        """
         super(Item, self).__init__()
         self.id = id
         self.count = count
         self.size = size
+        self.damage = damage
         self.data = data
 
     def __str__(self):
-        name = self.names.get(self.id, "Unknown Item!")
+        name = self.name
+        if self.count > 1:
+            name = ("%s " % self.count) + name
         if self.data:
             name = name + " (probably enchanted or something)"
         return name
+
+    def __nonzero__(self):
+        return True
+
+    def getitem(self, key):
+        return getattr(self, key)
+
+    @classmethod
+    def from_slotdata(cls, slotdata):
+        """Return an Item object (or None, if slot is empty) from the
+        provided slotdata. None is returned when the slotdata says the slot
+        is empty (e.g., the item id is -1).
+        """
+        if slotdata.id == -1:
+            return None
+        else:
+            return cls(**slotdata)
 
 
 ##This mapping of items was unused, and I'm not certain it was current.
