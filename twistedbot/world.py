@@ -14,7 +14,7 @@ from entities import Entities
 from grid import Grid
 from statistics import Statistics
 from chat import Chat
-from botentity import BotEntity, Bot
+from botentity import BotEntity
 from signwaypoints import SignWayPoints
 
 
@@ -41,6 +41,9 @@ class DummyQueue(object):
     def get_nowait(self):
         raise Empty()
 
+    def __nonzero__(self):
+        return False
+
 
 class World(object):
     def __init__(self, host=None, port=None,
@@ -56,7 +59,7 @@ class World(object):
         self.managers = set(config.MANAGERS)     # names as given from server
         self.chat = Chat(self)
         self.bot = BotEntity(self, bot_name)
-        self.bot_interface = Bot(self.bot)
+        self.inventories = inventory.Inventories(self.bot)
         self.stats = Statistics()
         self.game_ticks = 0
         self.connected = False
@@ -117,6 +120,9 @@ class World(object):
         reason = self.shutdown_reason
         reason = reason if reason else "(no reason given)"
         log.msg("Shutting Down: " + reason)
+        if self.protocol._transactions \
+          and len(self.protocol._transactions) > 5:
+            log.msg("Possible memory leak: %s" % self.factory._transactions)
         self.to_gui('shutting down', reason)
         self._to_gui.close()
         self._to_bot.close()
@@ -149,10 +155,7 @@ class World(object):
             msg = "Equipment for unkown entity %s, slot %s:  %s"
             log.msg((msg % eid, slot, Item(slotdata)))
             return
-        if entity.equipment is None:
-            entity.equipment = inventory.InventoryEntityEquipment()
-        entity.equipment[slot] = Item(**slotdata)
-        log.msg("temp " + str(entity))
+        entity.equipment[slot] = Item.from_slotdata(slotdata)
 
     def on_login(self, bot_eid=None, game_mode=None, dimension=None,
                  difficulty=None):
@@ -194,6 +197,12 @@ class World(object):
         :rtype: Message
         """
         self._to_gui.put(utils.Message(name, data))
+
+    def update_gui_inventory(self):
+        inventory = self.bot.interface.inventory
+        items = [item for item in inventory.general if item]
+        items = items + [item for item in inventory.ready if item]
+        self.to_gui('update items', items)
 
 
 class Commander(object):

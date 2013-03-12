@@ -9,37 +9,11 @@ import logbot
 import fops
 import blocks
 import behaviours
-import plugins
+from botinterface import BotInterface
 from axisbox import AABB
 
 
 log = logbot.getlogger("BOT_ENTITY")
-
-class Bot(object):
-    """This is meant to be a control-level abstraction of the bot, implementing
-    all aspects of a normal player interface, as well as being a central,
-    unified location for bot behaviour access gained through plugins."""
-    def __init__(self, bot_entity):
-        self.entity = bot_entity
-        self.world = bot_entity.world
-        self.behaviours = plugins.behaviours
-
-    def __getattr__(self, a):
-        if a in self.behaviours:
-            return self.behaviours[a]
-
-    def click(self, target, left_click=True):
-        """Accepts an entity or entity id.  Later, this should accept a block
-        or block coord as well.
-        """
-        target_eid = target if type(target) == int else target.eid
-        self.world.send_packet('animation', eid=self.entity.eid, animation=1)
-        self.world.send_packet('use entity', eid=self.entity.eid,
-                               target=target, button=left_click)
-
-    def hold(self, item):
-        """Hold an item.. ..ideally.."""
-        raise NotImplementedError()
 
 
 class BotObject(object):
@@ -134,6 +108,8 @@ class BotEntity(object):
         self.behaviour_tree = behaviours.BehaviourTree(self.world, self)
         self.cancel_value = None
 
+        self.interface = BotInterface(self)
+
     def on_connection_lost(self):
         if self.location_received:
             self.location_received = False
@@ -186,7 +162,8 @@ class BotEntity(object):
         """
         if b_obj.action != b_obj._action:
             b_obj.action = b_obj._action
-            self.world.send_packet("entity action", {"eid": self.eid, "action": b_obj._action})
+            data = {"eid": self.eid, "action": b_obj._action}
+            self.world.send_packet("entity action", data)
 
     def turn_to_point(self, b_obj, point):
         if point[0] == b_obj.x and point[2] == b_obj.z:

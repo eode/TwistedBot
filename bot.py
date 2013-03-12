@@ -1,8 +1,20 @@
 #! python
+# -*- coding: utf-8 -*-
+"""
+A bot for minecraft
+
+This bot has an accompanying gui, but can be run with or without the gui.
+
+To execute the bot alone, use:
+    python bot.py
+To execute the bot and gui, use:
+    python gui.py
+"""
 
 import signal
 import argparse
 import socket
+import os
 
 import syspath_fix
 syspath_fix.update_sys_path()
@@ -18,13 +30,19 @@ import twistedbot.logbot as logbot
 log = logbot.getlogger("MAIN")
 
 
+##TODO: having this working might be handy..
 class ConsoleChat(basic.LineReceiver):
+    delimiter = os.linesep
+
     def __init__(self, world):
         self.world = world
 
     def lineReceived(self, line):
+        if not line.strip():
+            return
         try:
-            self.world.chat.process_command(line)
+            line = ("<%s> !" % config.COMMANDER) + line.lstrip()
+            self.world.chat.on_chat_message(line)
         except Exception as e:
             logbot.exit_on_error(e)
 
@@ -61,13 +79,56 @@ def initialize_bot(args, to_bot=None, to_gui=None):
                   commander_name=args.commandername, bot_name=args.botname,
                   to_bot_q=to_bot, to_gui_q=to_gui)
     reactor.addSystemEventTrigger("before", "shutdown", world.on_shutdown)
-    try:
-        from twisted.internet import stdio
-        stdio.StandardIO(ConsoleChat(world))
-    except ImportError:
-        pass
     mc_factory = MineCraftFactory(world)
+    world.reactor = reactor
     return world, mc_factory
+
+
+class GuiProtocol(object):
+    """Just a container object for protocol methods coming from gui"""
+    def __init__(self, reactor, mc_factory, world):
+        self.reactor = reactor
+        self.mc_factory = mc_factory
+        self.world = world
+        self.methods = {
+            'drop all': self.on_gui_clicked_drop_all,
+            'drop one': self.on_gui_clicked_drop_one,
+            'drop stack': self.on_gui_clicked_drop_stack,
+            'gui clicked item': self.on_gui_clicked_item,
+            "shut down": self.on_shut_down,
+            }
+
+    def gui_integration_loop(self):
+        """Communicate with GUI, if it is loaded"""
+        message = self.world.to_bot()
+        if message is None:
+            return
+        if message.name in self.methods:
+            self.methods[message.name](message.data)
+        else:
+            log.msg("Unhandled Protocol Item from GUI: " + str(message))
+
+    def on_gui_clicked_drop_all(self, data):
+        self.world.bot.interface.drop_everything()
+
+    def on_gui_clicked_drop_one(self, data):
+        self.world.bot.interface.drop(1)
+
+    def on_gui_clicked_drop_stack(self, data):
+        self.world.bot.interface.drop(-1)
+
+    def on_gui_clicked_item(self, data):
+        received_item = data
+        inventory = self.world.bot.interface.inventory
+        item = inventory[received_item.window_slot_number]
+        if item.name != received_item.name:
+            return
+        self.world.bot.interface.hold(item, lookup=False)
+
+    def on_shut_down(self, data):
+        self.world.to_gui("shutdown ok", '')
+        message = "'shut down' received from GUI"
+        self.reactor.callFromThread(self.mc_factory.shut_down, message)
 
 
 def start(argv, to_bot=None, to_gui=None):
@@ -79,19 +140,18 @@ def start(argv, to_bot=None, to_gui=None):
         reactor.callFromThread(mc_factory.shut_down, "CTRL-C from user")
     signal.signal(signal.SIGINT, customKeyboardInterruptHandler)
 
-    def gui_integration_loop():
-        """Communicate with GUI, if there is one"""
-        if not to_bot.empty():
-            message = to_bot.get()
-            if message.name == "shut down":
-                world.to_gui("shutdown ok", '')
-                message = "'shut down' received from GUI"
-                reactor.callFromThread(mc_factory.shut_down, message)
     if to_bot and to_gui:
-        gui_loop = task.LoopingCall(gui_integration_loop)
+        gui_protocol = GuiProtocol(reactor, mc_factory, world)
+        gui_loop = task.LoopingCall(gui_protocol.gui_integration_loop)
         gui_loop.start(0.25)
         reactor.addSystemEventTrigger("before", "shutdown", gui_loop.stop)
 
+    # console input
+    try:
+        from twisted.internet import stdio
+        stdio.StandardIO(ConsoleChat(world))
+    except ImportError:
+        pass
     # run the bot
     reactor.connectTCP(args.serverhost, args.serverport, mc_factory)
     reactor.run()

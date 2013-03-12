@@ -4,6 +4,7 @@ import logbot
 from axisbox import AABB
 from utils import Vector
 from resources import namedata
+import inventory
 import config
 
 
@@ -39,9 +40,6 @@ class Entity(object):
         self.z = kwargs["z"]
         self.velocity = None
         #log.msg(str(self))
-
-    equipment = property(lambda s: s._inv if hasattr(s, '_inv') else None,
-                         lambda s, v: setattr(s, '_inv', v))
 
     is_bot = property(lambda s: s._bot if hasattr(s, '_bot') else False,
                       lambda s, v: setattr(s, '_bot', v))
@@ -79,8 +77,7 @@ class Entity(object):
         return self.position.distance(other.position)
 
     def __str__(self):
-        equipment = ', with: ' + str(self.equipment) if self.equipment else ''
-        return "{} at {}{}".format(self.name, self.position, equipment)
+        return "%s at %s" % (self.name, self.position)
 
 
 class EntityBot(Entity):
@@ -99,6 +96,7 @@ class EntityBot(Entity):
         self.is_bot = True
         log.msg(str(self))
 
+
 class EntityLiving(Entity):
     def __init__(self, **kwargs):
         super(EntityLiving, self).__init__(**kwargs)
@@ -115,20 +113,41 @@ class EntityLiving(Entity):
         yaw, pitch = self.orientation
         return (x, y, z, yaw, pitch)
 
+    @property
+    def equipment(self):
+        try:
+            return self._equipment
+        except AttributeError:
+            self._equipment = inventory.GameContainerEntityEquipment()
+            return self._equipment
+
+    @property
+    def has_equipment(self):
+        return hasattr(self, '_equipment')
+
+    def __str__(self):
+        if self.has_equipment:
+            equipment = ', with: ' + str(self.equipment)
+        else:
+            equipment = ''
+        return "%s at %s%s" % (self.name, self.position, equipment)
+
 
 class EntityMob(EntityLiving):
     names = dict((e.number, e) for e in namedata.mob_entities)
+
     def __init__(self, **kwargs):
         # This must come before class init, or log message will fail.
         self.etype = kwargs['etype']
         super(EntityMob, self).__init__(**kwargs)
         self.head_yaw = kwargs["yaw"]
         self.status = None
-        #TODO assign mob type according to the etype and metadata
+        #TODO Flesh out mob info and capabilities
 
 
 class EntityPlayer(EntityLiving):
     last_known_position = {}
+
     def __init__(self, **kwargs):
         # this is sorta bad form, but creation of 'username' must come before
         # superclass initialization calls, to allow the 'name' property to
@@ -146,12 +165,15 @@ class EntityPlayer(EntityLiving):
 
         if self.world.commander.name == self.username:
             self.world.commander.eid = self.eid
+        self.announce()
+
+    def announce(self):
         if self.is_commander:
             log.msg("Found commander: " + self.username)
-            self.world.chat.send_message("Hello, commander "+self.username)
+            self.world.chat.send_message("Hello, commander " + self.username)
         elif self.is_manager:
             log.msg("Found manager: " + self.username)
-            self.world.chat.send_message("Oh, hai, "+self.username)
+            self.world.chat.send_message("Oh, hai, " + self.username)
         else:
             log.msg("Found player: " + self.username)
 
@@ -161,9 +183,9 @@ class EntityPlayer(EntityLiving):
             return
         self.last_known_position[self.username] = self.position
         if self.is_commander:
-            if self.world.commander.eid == self.eid:
+            if self.world.commander.eid == self.eid and self.eid is not None:
                 log.msg("Lost commander (%s)" % self.username)
-                self.world.chat.send_message("Don't forget me, "+self.username)
+                self.world.chat.send_message("Where'd you go, %s?" % self.username)
                 self.world.commander.eid = None
             else:
                 log.msg("Warning, destroyed a commander entity, but "
@@ -176,7 +198,7 @@ class EntityPlayer(EntityLiving):
                 log.msg("Warning, destroyed a manager player entity, but "
                         "eid does not match the one in entities.players")
         else:
-            log.msg("Player '%s' logged off." % self.username)
+            log.msg("Player '%s' is no longer visible." % self.username)
 
     def _name(self):
         return 'Player "%s"' % self.username
@@ -209,6 +231,7 @@ class EntityDroppedItem(Entity):
     def __init__(self, **kwargs):
         super(EntityDroppedItem, self).__init__(**kwargs)
         self.nbt = kwargs["slotdata"]
+        log.msg(str(self))
 
 
 class EntityPainting(Entity):
@@ -249,23 +272,33 @@ class Entities(dict):
         self.world.commander.last_position = gpos
 
     def entityupdate(fn):
+        """Decorator for all entity updates
+        Currently, this will:
+            * log an error and return if the entity being updated doesn't exist
+            * log a message if the bot is being updated
+            * executes the update otherwise
+        """
         def f(self, *args, **kwargs):
             eid = args[0]
-            entity = self.get_entity(eid)
+            entity = self.get(eid, None)
             if entity is None:
                 # received entity update packet for entity
                 # that was not initialized with new_*, this should not happen
-                log.msg("do not have entity id %d registered" % eid)
+                log.msg("Error: Entity id %d is not registered" % eid)
                 return
             if entity.is_bot:
-                #log.msg("Server is changing my %s with %s %s" % (fn.__name__, args, kwargs))
-                pass
-            fn(self, entity, *args[1:], **kwargs)
+                log.msg("Server is changing my %s with %s %s" %
+                        (fn.__name__, args, kwargs))
+            val = fn(self, entity, *args[1:], **kwargs)
             self.maybe_commander(entity)
+            return val
         return f
 
     def on_new_player(self, **kwargs):
         username, eid = kwargs['username'], kwargs['eid']
+        # destroy old before creating new -- keeps announcements in order
+        if eid in self:
+            self.pop(eid)
         self[eid] = EntityPlayer(world=self.world, **kwargs)
         self.players[username] = eid
 
