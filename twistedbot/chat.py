@@ -80,7 +80,8 @@ class Chat(object):
         it's from an authority (commander or managers)"""
         msg = self.clean(msg)
         log.msg("<< %s" % msg)
-        speaker, message = msg.split(None, 1)
+        sm = msg.split(None, 1)
+        speaker, message = sm if len(sm) == 2 else (sm[0], '')
         speaker = speaker.strip('<>')
         self.process_command(speaker, message)
 
@@ -114,7 +115,13 @@ class Chat(object):
         verb, data = verbdata if len(verbdata) == 2 else (verbdata[0], '')
         # Now, we'll execute the appropriate plugin.
         if verb in self.verbs:
-            self.verbs[verb](speaker, verb, data, self.world.bot.interface)
+            try:
+                self.verbs[verb](speaker, verb, data, self.world.bot.interface)
+            except:
+                self.send_message("OMG OW! Bad behaviour!")
+                plugins._log.msg("Error in plugin %s: " % verb, exc_info=True)
+                return
+
         else:
             self.send_message("Unknown command: %s %s " % (verb, data))
 

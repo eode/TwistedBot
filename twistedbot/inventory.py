@@ -37,7 +37,9 @@ EnchantmentTable(Window):
 
 import logbot
 from items import Item, NoItem
-from Queue import Queue
+from Queue import Queue, Full, Empty
+
+from construct import Container
 
 log = logbot.getlogger('INVENTORY')
 
@@ -94,11 +96,15 @@ class GameContainer(list):
                 counter[name] = item.count
         counter = counter.items()
         counter.sort()
-        strings = [str(i[1]) + ' ' + i[0] for i in counter]
+        strings = [(str(count) + ' ' if count > 1 else '') + name
+                        for name, count in counter]
         if free:
-            prefix = ("and " if strings else '')
-            strings.append(prefix + "%d free slots" % free)
+            slots = str(free) + ' free slot%s.' % ('' if free == 1 else 's')
+            strings.append(('and ' if strings else '') + slots)
         return self.name + ": " + ', '.join(strings)
+
+    def has_room(self):
+        return any(True for i in self if not i)
 
 
 class GameContainerArmor(GameContainer):
@@ -295,11 +301,11 @@ class GameContainerOutput(GameContainer):
         return super(GameContainerOutput, self).__str__().replace('\n', ' ')
 
 
-class GameContainerPlayerInv(GameContainer):
-    name = "Player Inventory"
+class GameContainerGeneralInv(GameContainer):
+    name = "General Inventory"
 
     def __init__(self, data=None):
-        super(GameContainerPlayerInv, self).__init__(size=27, data=data)
+        super(GameContainerGeneralInv, self).__init__(size=27, data=data)
 
     def __repr__(self):
         return "%s(data=%s)" % (type(self).__name__,
@@ -317,6 +323,8 @@ class GCProxy(object):
             self.start += len(inv)
 
     def __getitem__(self, index):
+        if isinstance(index, (str, unicode)):
+            return self.lookup(index)
         if isinstance(index, slice):
             if index.start is None:
                 index = slice(0, index.stop, index.step)
@@ -346,6 +354,10 @@ class GCProxy(object):
             index = index + self.start
         self.window[index] = value
 
+    def __iter__(self):
+        for i in xrange(len(self)):
+            yield self[i]
+
     def __len__(self):
         return len(self.gc)
 
@@ -357,7 +369,7 @@ class GCProxy(object):
             return self.__dict__[name]
         return getattr(self.gc, name)
 
-    def general_lookup(self, name):
+    def _general_lookup(self, name):
         hits = []
         name = name.lower().strip()
         for i in self:
@@ -373,11 +385,13 @@ class GCProxy(object):
             pass
         hits = []
         name = name.lower().strip()
+        count = 0
         for item in self:
+            count += 1
             if name.strip().lower() == item.name.lower():
                 hits.append(item)
         if lenient and not hits:
-            hits = self.general_lookup(name)
+            hits = self._general_lookup(name)
         return hits
 
 
@@ -408,6 +422,7 @@ class InventoryBase(object):
         data1 == data3  # True
     """
     name = "Generic Inventory"
+    window_manager = None
 
     def __init__(self, wid=None, *args):
         self.wid = int(wid)
@@ -418,30 +433,35 @@ class InventoryBase(object):
         return sum(len(i) for i in self.inventories)
 
     def __getitem__(self, index):
-        if type(index) == slice:
+        """o[start:end] -> list of Slot objects
+        o[index] -> Slot object at index
+        o[string] -> list of slots whose names (leniently) match string
+        """
+        if isinstance(index, (int, long)):
+            # Works for pos or neg numbers, during slicing or otherwise
+            if index < 0:
+                index = len(self) + index
+            i = index
+            for inv in self.inventories:
+                if i < len(inv):
+                    item = inv.gc[i]
+                    if item is None:
+                        item = NoItem()
+                    item.gc_slot_number = i
+                    item.window_slot_number = index
+                    item.wid = self.wid
+                    return item
+                else:
+                    i = i - len(inv)
+        elif isinstance(index, slice):
             if index.step:
                 raise NotImplementedError("Window may not be step-sliced.")
             retval = []
             for i in xrange(index.start, index.stop):
-                item = self[i]
-                item.slot = i
-                retval.append(item)
+                retval.append(self[i])
             return retval
-        # Works for positive or negative numbers, during slicing or otherwise
-        if index < 0:
-            index = len(self) + index
-        i = index
-        for inv in self.inventories:
-            if i < len(inv):
-                item = inv.gc[i]
-                if item is None:
-                    item = NoItem()
-                item.wid = self.wid
-                item.slot = index
-                item.sub_slot = index - inv.start
-                return item
-            else:
-                i = i - len(inv)
+        elif isinstance(index, (str, unicode)):
+            return self.lookup(index)
         raise IndexError("Index out of range.")
 
     def __setitem__(self, index, value):
@@ -468,141 +488,160 @@ class InventoryBase(object):
     def __str__(self):
         return self.name + ': \n' + self.contents
 
-    def general_lookup(self, name):
+    def _general_lookup(self, name):
         hits = []
         for inv in self.inventories:
-            hits.extend(inv.general_lookup(name))
+            hits.extend(inv._general_lookup(name))
         return hits
 
     def lookup(self, name, lenient=True):
         hits = []
         for inv in self.inventories:
-            hits.extend(inv.lookup(name, lenient))
+            new_hits = inv.lookup(name, lenient)
+            hits.extend(new_hits)
         return hits
-
-
-class InventoryWindow(InventoryBase):
-    """All 'inventory windows' subclass this, except the mouse."""
-    player = property(lambda s: s.inventories[-2],
-                      lambda s, v: setattr(s.inventories, -2, v))
-
-    ready = property(lambda s: s.inventories[-1],
-                    lambda s, v: setattr(s.inventories, -1, v))
 
     contents = property(lambda s: '\n'.join(str(i) for i
                             in s.inventories))
 
 
+class InventoryWindow(InventoryBase):
+    """All 'inventory windows' subclass this, except the mouse."""
+    def close(self):
+        world = self.window_manager.world
+        world.send_packet('close window', {'wid': self.wid})
+
+    general = property(lambda s: s.inventories[-2],
+                       lambda s, v: setattr(s.inventories, -2, v))
+
+    ready = property(lambda s: s.inventories[-1],
+                    lambda s, v: setattr(s.inventories, -1, v))
+
+
 class Mouse(InventoryBase):
     name = "Mouse"
-    clicking = Queue(maxsize=1)
 
-    def __init__(self, window_manager, wid):
+    def __init__(self, wid):
         super(Mouse, self).__init__(
             wid,
             GameContainerMouse(),
             )
-        self.manager = window_manager
-        self.clicking = False
 
-    _send_packet = property(lambda s: s.manager.world.factory.send_packet)
-    _transact = property(lambda self: self.manager.world.factory.transact)
+    @property
+    def slot(self):
+        return self.inventories[0][-1]
 
-    def __setitem__(self, index, value):
-        if index is not -1:
-            raise ValueError("Mouse only has slot -1, not slot " + str(index))
-        super(Mouse, self).__setitem__(index, value)
+    def take_stack(self, slot, func=None):
+        """Assign slot to self, and disassociate it from its current window.
+        This is a local action only, generally completed on success of a
+        click transaction."""
+        def take_stack_callback(success):
+            if not success:
+                self.window_manager.world.chat.send_message(
+                    "Oops! click to take stack was rejected.")
+                func(success)
+                return
+            if self.slot:
+                log.msg("take_stack: virtual mouse already has full slot.")
+                func(False)
+                return
+            inventory = self.window_manager.get(slot.wid, None)
+            if not inventory:
+                log.msg("Invalid window id: " + str(slot.wid))
+            if inventory[slot.window_slot_number] is not slot:
+                log.msg("slot: %s  inventory[slot.window_slot_number]: %s" %
+                        (slot, inventory[slot.window_slot_number]))
+                return False
+            inventory[slot.window_slot_number] = None
+            slot.wid = -1
+            slot.window_slot_number = -1
+            slot.gc_slot_number = None
+            self[-1] = slot
+            log.msg("self[-1]: %s  slot: %s" % (self[-1], slot))
+            if func:
+                func(True)
+        # If the click succeeds, mirror the changes locally.
+        self.click_slot(LEFT_CLICK, slot, take_stack_callback, False)
 
-    def __getitem__(self, index):
-        if index is not -1:
-            raise ValueError("Mouse only has slot -1, not slot " + str(index))
-        super(Mouse, self).__getitem__(index)
+    def put_stack(self, inventory, func=None):
+        if not self.slot:
+            raise ValueError("Virtual mouse pointer has no item to put.")
+        for i in xrange(len(inventory)):
+            slot = inventory[i]
+            if not slot:  # free slot exists
+                break
+        if slot:
+            self.window_manager.world.chat.send_message(
+                "No free slot to move stuff to")
 
-    def _get_window(self, window_ref):
-        """window_ref may be a window or an int reference to a window."""
-        try:
-            # If we were given a window ref, get the window.
-            window = self.window_manager[int(window_ref)]
-        except TypeError:
-            pass
-        int(window.wid)
-        return window
+        def put_stack_callback(success):
+            if not success:
+                self.window_manager.world.chat.send_message(
+                    "Oops! click rejected..")
+                func(False)
+                return
+            selfslot = self.slot
+            self[-1] = None
+            inventory[i] = selfslot
+            if func:
+                func(success)
+        self.click_slot(LEFT_CLICK, slot, put_stack_callback, False)
 
-    def click_window(self, button, window, slot, func, shift):
-        """click_window(self, func, wid, slot, button, shift) -> []
+    _send_packet = property(lambda self:
+                            self.window_manager.world.send_packet)
+    _transact = property(lambda self:
+                         self.window_manager.world.protocol.transact)
+
+    def click_slot(self, button, slot, func=lambda s: s, shift=False):
+        """click_window(self, button, slot, func, shift) -> []
         Attempt to perform a click transaction with the server returning an
         empty list that will be updated when the response comes back from the
         server, appending the return value of func.  Func should be a method
         taking one parameter (True/False to indicate success/failure of the
         click transaction).
 
-        Typical use, (for func=lambda success: success):
-            click = _click_window(*args)
-            if click:
-                if click.pop() == True:
-                    <do successful click stuff>
-                else:
-                    <do failed click stuff>
+        Typical use, (for simple success checking):
+            myfunc = lambda success: success   # just return the success value
+            result = _click_window(func=myfunc, **other_args)
+            while True:
+                # result will have the return of myfunc appended when it runs
+                if result:
+                    if click.pop() == True:
+                        <do successful click stuff you couldn't do in myfunc>
+                    else:
+                        <do failed click stuff you couldn't do in myfunc>
+                yield  # or do other stuff while waiting for response from svr
 
         Arguments:
+            button := The button clicked - LEFT_CLICK or RIGHT_CLICK
+            slot := The number of the slot to click
             func := method which will be called with the Success value, and
                 whose return value will be appended to the result list
-            window := Window or wid of the window to click
-            slot := The number of the slot to click
-            button := The button clicked - LEFT_CLICK or RIGHT_CLICK
             shift := Whether or not shift is held while clicking
         """
         result = []
-        wid = self._get_window(window).wid
-        if wid is None:
-            raise ValueError("wid %s does not refer to an existing window."
-                                % wid)
         f = lambda success: result.append(func(success))
         token = self._transact(func=f)
-        packet = {'wid': wid, 'slot': slot, 'button': button, 'token': token,
-                  'shift': shift}
+        packet = {'button': button, 'shift': shift, 'token': token,
+                  'wid': slot.wid, 'slot': slot.window_slot_number,
+                  'slotdata': slot}
+        log.msg('packet: ' + str(packet))
+        log.msg('slot type: ' + str(type(slot)))
+        log.msg('slotdata.size: ' + str(slot.size))
         self._send_packet('click window', packet)
         return result
 
-    def click_left(self, window, slot, func=lambda val: val, shift=False):
-        """click_left(window, slot, func=lambda val: val, shift=False) -> []
-        convenience method for click_window()
-        window := window or wid to click
-        slot := slot number to click
-        func := method to call on success/failure. Defaults to lambda val:val
-            which means that the result list will have True or False appended
-            to it on success or failure.
-        shift := whether or not shift is held
 
-        ..see click_window for more details.
-        """
-        return self.click_window(func, window, slot, LEFT_CLICK, shift)
-
-    def click_right(self, window, slot, func=lambda val: val, shift=False):
-        """click_right(window, slot, func=lambda val: val, shift=False) -> []
-        convenience method for click_window()
-        window := window or wid to click
-        slot := slot number to click
-        func := method to call on success/failure. Defaults to lambda val:val
-            which means that the result list will have True or False appended
-            to it on success or failure.
-        shift := whether or not shift is held
-
-        ..see click_window for more details.
-        """
-        return self._click_window(func, window, slot, RIGHT_CLICK, shift)
-
-
-class InventoryPlayer(InventoryWindow):
+class InventoryFull(InventoryWindow):
     name = "Full Inventory"
 
-    def __init__(self, window_manager, wid):
-        super(InventoryPlayer, self).__init__(
+    def __init__(self, wid):
+        super(InventoryFull, self).__init__(
             wid,
             GameContainerOutput(),
             GameContainerCraftingInputSmall(),
             GameContainerArmor(),
-            GameContainerPlayerInv(),
+            GameContainerGeneralInv(),
             GameContainerReady()
             )
     output = property(lambda self: self.inventories[0])
@@ -719,11 +758,13 @@ class Inventories(dict):
         }
 
     def __init__(self, bot):
+        # Inventory windows should have window manager base
+        InventoryBase.window_manager = self
         super(Inventories, self).__init__()
         self.world = bot.world
         self.bot = bot
-        self[WID_INVENTORY] = InventoryPlayer(self, WID_INVENTORY)
-        self[WID_MOUSE] = Mouse(self, WID_MOUSE)
+        self[WID_INVENTORY] = InventoryFull(WID_INVENTORY)
+        self[WID_MOUSE] = Mouse(WID_MOUSE)
 
     def set_window_items(self, length, slotdata, window_id):
         try:

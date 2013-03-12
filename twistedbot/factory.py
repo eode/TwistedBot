@@ -200,7 +200,6 @@ class MineCraftProtocol(Protocol):
             log.msg("Unknwon transaction %s %s by server!" % (_packet.token,
                                                               accepted))
 
-
     def p_ping(self, c):
         pid = c.pid
         self.send_packet("keep alive", {"pid": pid})
@@ -261,8 +260,8 @@ class MineCraftProtocol(Protocol):
                                         "pitch": c.orientation.pitch})
 
     def p_held_item_change(self, c):
-#TODO This (held_item_change)!!
-        pass
+        self.world.bot.interface._active_slot = c.item
+        log.msg('Held item set by server: ' + str(c.item))
 
     def p_use_bed(self, c):
         """
@@ -272,8 +271,7 @@ class MineCraftProtocol(Protocol):
         pass
 
     def p_animate(self, c):
-        # Ignored from server
-#TODO this is two way, client uses only value 1 (swing arm). Probably needed.
+        # ignored when coming from server
         pass
 
     def p_player(self, c):
@@ -282,8 +280,8 @@ class MineCraftProtocol(Protocol):
                                           pitch=c.pitch, x=c.x, y=c.y, z=c.z)
 
     def p_dropped_item(self, c):
-        self.world.entities.on_new_dropped_item(eid=c.eid, slotdata=c.slotdata, x=c.x,
-                                                y=c.y, z=c.z, yaw=c.yaw,
+        self.world.entities.on_new_dropped_item(eid=c.eid, slotdata=c.slotdata,
+                                                x=c.x, y=c.y, z=c.z, yaw=c.yaw,
                                                 pitch=c.pitch, roll=c.roll)
 
     def p_collect(self, c):
@@ -309,10 +307,12 @@ class MineCraftProtocol(Protocol):
                                        metadata=c.metadata)
 
     def p_spawn_painting(self, c):
-        self.world.entities.on_new_painting(eid=c.eid, x=c.x, y=c.y, z=c.z, title=c.title)
+        self.world.entities.on_new_painting(eid=c.eid, x=c.x, y=c.y, z=c.z,
+                                            title=c.title)
 
     def p_experience_orb(self, c):
-        self.world.entities.on_new_experience_orb(eid=c.eid, count=c.count, x=c.x, y=c.y, z=c.z)
+        self.world.entities.on_new_experience_orb(eid=c.eid, count=c.count,
+                                                  x=c.x, y=c.y, z=c.z)
 
     def p_entity_velocity(self, c):
         self.world.entities.on_velocity(c.eid, c.dx, c.dy, c.dz)
@@ -327,7 +327,8 @@ class MineCraftProtocol(Protocol):
         self.world.entities.on_look(c.eid, c.yaw, c.pitch)
 
     def p_entity_move_look(self, c):
-        self.world.entities.on_move_look(c.eid, c.dx, c.dy, c.dz, c.yaw, c.pitch)
+        self.world.entities.on_move_look(c.eid, c.dx, c.dy, c.dz, c.yaw,
+                                         c.pitch)
 
     def p_entity_teleport(self, c):
         self.world.entities.on_teleport(c.eid, c.x, c.y, c.z, c.yaw, c.pitch)
@@ -353,7 +354,9 @@ class MineCraftProtocol(Protocol):
         pass
 
     def p_levelup(self, c):
-        self.world.bot.on_update_experience(experience_bar=c.current, level=c.level, total_experience=c.total)
+        self.world.bot.on_update_experience(experience_bar=c.current,
+                                            level=c.level,
+                                            total_experience=c.total)
 
     def p_chunk(self, c):
         self.world.grid.on_load_chunk(c.x, c.z, c.continuous, c.primary_bitmap,
@@ -376,7 +379,8 @@ class MineCraftProtocol(Protocol):
         pass
 
     def p_bulk_chunk(self, c):
-        self.world.grid.on_load_bulk_chunk(c.meta, c.data.decode('zlib'), c.light_data)
+        self.world.grid.on_load_bulk_chunk(c.meta, c.data.decode('zlib'),
+                                           c.light_data)
 
     def p_explosion(self, c):
         self.world.grid.on_explosion(c.x, c.y, c.z, c.records)
@@ -402,19 +406,22 @@ class MineCraftProtocol(Protocol):
         log.msg("close_window: " + str(c))
 
     def p_click_window(self, c):
-        log.msg("click_window: " + str(c))
+        # Never sent by server
+        pass
 
     def p_set_slot(self, c):
         log.msg("set_slot: " + str(c))
         self.world.inventories.set_slot(**c)
 
     def p_set_window_items(self, c):
-        # log.msg("set_window_items: " + str(c))
+#        log.msg("set_window_items: " + str(c))
         self.world.inventories.set_window_items(**c)
+        self.world.update_gui_inventory()
 
     def p_window_slot(self, c):
-        #log.msg("window_slot: " + str(c))
+#        log.msg("window_slot: " + str(c))
         self.world.inventories.window_slot(**c)
+        self.world.update_gui_inventory()
 
     def p_confirm_transaction(self, c):
         log.msg("confirm transaction: " + str(c))
@@ -510,14 +517,15 @@ class MineCraftFactory(ReconnectingClientFactory):
         protocol.factory = self
         return protocol
 
-    def clientConnectionLost(self, connector, unused_reason):
+    def clientConnectionLost(self, connector, reason):
         if self.log_connection_lost:
-            log.msg('Connection lost, reason:', unused_reason.getErrorMessage())
-        ReconnectingClientFactory.clientConnectionLost(self, connector, unused_reason)
+            log.msg('Connection lost, reason:', reason.getErrorMessage())
+        ReconnectingClientFactory.clientConnectionLost(self, connector, reason)
 
     def clientConnectionFailed(self, connector, reason):
         log.msg('Connection failed, reason:', reason.getErrorMessage())
-        ReconnectingClientFactory.clientConnectionFailed(self, connector, reason)
+        ReconnectingClientFactory.clientConnectionFailed(self, connector,
+                                                         reason)
 
     def shut_down(self, reason=''):
         """Shutdown, logging a reason as to why shutdown was called.  This is

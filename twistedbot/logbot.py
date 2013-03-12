@@ -2,6 +2,7 @@
 import sys
 import os
 from datetime import datetime
+import traceback
 
 from twisted.internet import reactor
 from twisted.python import log, util
@@ -51,6 +52,11 @@ class Logger(object):
         self.name = name
 
     def msg(self, *args, **kwargs):
+        # log traceback if requested.
+        args = list(args)
+        if 'exc_info' in kwargs:
+            if kwargs.pop('exc_info'):
+                args.append('\n' + traceback.format_exc())
         if "header" not in kwargs:
             kwargs["header"] = self.name
         log.msg(*args, **kwargs)

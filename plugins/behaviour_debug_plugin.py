@@ -57,7 +57,6 @@ def py_eval(user, verb, data, interface):
         log.err()
         val = "Exception: " + str(type(e))
     # chat will balk on messages if they contain specific characters.
-    val = val.replace('<', '*').replace('>', '*').replace('|', '~')
     chat.send_message(val)
 
 
@@ -75,9 +74,14 @@ def longmsg(user, verb, data, interface):
         interface.world.chat.send_message(msg)
 
 
+def exception(user, verb, data, interface):
+    {}['causing an exception']
+
+
 verbs = {
     "eid": eid,
     "neighbors": neighbors,
     "eval": py_eval,
     "longmsg": longmsg,
+    "exception": exception,
     }
